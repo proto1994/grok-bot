@@ -193,12 +193,26 @@ try {
   });
 
   await check('picking a colour repaints the preview', async () => {
+    /*
+     * Click a swatch that differs from the one already selected.
+     *
+     * The sheet seeds a random look each time it opens (derive(Date.now()), so
+     * a roster is not uniform), so a hardcoded index lands on the current
+     * colour about one run in eleven and the fill correctly does not change.
+     */
     const before = await page.evaluate(
       () => document.querySelector('#bpreview path').getAttribute('fill'));
-    await page.evaluate(() => document.querySelectorAll('#bcolors button')[2].click());
+    const clicked = await page.evaluate((current) => {
+      const swatches = [...document.querySelectorAll('#bcolors button')];
+      const target = swatches.find((b) => b.getAttribute('aria-checked') !== 'true');
+      if (!target) return null;
+      target.click();
+      return target.dataset.color;
+    }, before);
+    if (!clicked) throw new Error('every swatch reported itself as selected');
     const after = await page.evaluate(
       () => document.querySelector('#bpreview path').getAttribute('fill'));
-    if (before === after) throw new Error(`fill did not change from ${before}`);
+    if (before === after) throw new Error(`fill stayed ${before} after picking ${clicked}`);
   });
 
   await page.fill('#bname', '浏览器验收');
@@ -218,6 +232,21 @@ try {
   await check('the options are lettered, so they can also be typed', async () => {
     const keys = await page.$$eval('.choices .key', (els) => els.map((e) => e.textContent));
     if (keys[0] !== 'A') throw new Error(`first key is "${keys[0]}"`);
+  });
+
+  await check('the question is drawn once, not once per path that reports it', async () => {
+    /*
+     * Two paths draw a card — the live question.asked event and the ask_choice
+     * note replayed from history — and selecting a bot clears the log and then
+     * awaits several requests. A question arriving inside those awaits got
+     * painted twice, which is every greeting. This walked through the checks
+     * above unnoticed because none of them counted the cards.
+     */
+    const cards = await page.$$eval('.choices', (els) =>
+      els.map((e) => e.querySelector('.q')?.textContent ?? ''));
+    if (cards.length !== 1) {
+      throw new Error(`${cards.length} cards on screen: ${JSON.stringify(cards)}`);
+    }
   });
 
   await check('the status row shows the bot working, not the stream', async () => {

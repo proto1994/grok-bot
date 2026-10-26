@@ -133,33 +133,62 @@ console.log('a reply does not narrate its own reasoning');
 {
   const bot = store.createBot(OWNER, '干活', '按用户说的做事。', null, 'full');
 
-  const runId = await startRun(
-    bot.id,
+  /*
+   * Three turns, not one.
+   *
+   * Narration was intermittent — roughly a quarter of replies before the fix.
+   * A single turn passing proves very little, and the fix (reasoning: true
+   * plus thinkingLevel above 'off') is a change in where reasoning goes, so a
+   * regression would show up as it drifting back into the text now and then.
+   */
+  const runIds: string[] = [];
+  for (const msg of [
     '看一下工作区里有什么文件，然后告诉我 a.txt 里写的是什么。',
-    () => {},
-  );
-  await settle(bot.id);
+    '再确认一下 b.txt 存不存在。',
+    'Add a line saying done to a.txt.',
+  ]) {
+    runIds.push(await startRun(bot.id, msg, () => {}));
+    await settle(bot.id);
+  }
+  const runId = runIds[0]!;
 
-  await check('it answered', () => {
-    assert.ok(texts(runId).join('').trim().length > 0, 'no reply at all');
-  });
+  const allTexts = () => runIds.flatMap((r) => texts(r));
 
-  await check('no reply opens with English self-narration', () => {
-    /*
-     * The tell is a leading ASCII sentence in a Chinese conversation. Checked
-     * on the first line only: an English identifier or a quoted path further
-     * down is perfectly normal.
-     */
-    for (const t of texts(runId)) {
-      const first = t.trim().split('\n')[0] ?? '';
-      const narrates = /^(I |I'|Let me |Okay|Good|Now I|The user |First,|Looking )/.test(first);
-      assert.equal(narrates, false, `reply opens with: "${first.slice(0, 120)}"`);
+  await check('it answered each time', () => {
+    for (const r of runIds) {
+      assert.ok(texts(r).join('').trim().length > 0, `run ${runIds.indexOf(r) + 1} said nothing`);
     }
   });
 
-  await check('it replied in the language it was asked in', () => {
-    const body = texts(runId).join(' ');
-    assert.match(body, /[一-龥]/, `no Chinese in: ${body.slice(0, 160)}`);
+  await check('no reply opens with self-narration, in either language', () => {
+    /*
+     * Checked on the first line only: an English identifier or a path further
+     * down is normal, and so is "I" in an ordinary English sentence addressed
+     * to the user.
+     *
+     * Both languages, because narration is not an English problem. A probe
+     * against this gateway produced "用户问加法要注意什么，一句话回答即可" —
+     * same fault, and an English-only pattern walks straight past it. The tell
+     * in Chinese is third person about 用户 or announcing the reply's own
+     * shape; in English it is planning out loud.
+     */
+    const EN = /^(I should|I'll |I need to|I have |Let me |Okay|Good,|Now I|The user |First,|Looking |This (is|looks) )/;
+    const ZH = /^(用户(问|想|说|要|让|提|希望|切换)|这(是|个|看起来)|应该用|我(应该|需要|先|得先)|看起来是)/;
+    for (const t of allTexts()) {
+      const first = (t.trim().split('\n')[0] ?? '').trim();
+      assert.equal(EN.test(first), false, `narrates in English: "${first.slice(0, 120)}"`);
+      assert.equal(ZH.test(first), false, `narrates in Chinese: "${first.slice(0, 120)}"`);
+    }
+  });
+
+  await check('it replied in the language each message was written in', () => {
+    const zh = texts(runIds[0]!).join(' ');
+    assert.match(zh, /[一-龥]/, `asked in Chinese, got: ${zh.slice(0, 160)}`);
+    // The third was English, and matching the user is right — what must not
+    // come back is an English *explanation of its own plan* above the answer,
+    // which the narration check above covers for both languages.
+    const en = texts(runIds[2]!).join(' ');
+    assert.ok(en.trim().length > 0, 'nothing said in reply to the English message');
   });
 
   await dropSession(bot.id);

@@ -27,11 +27,27 @@ export const ADA_TOKEN_ENV = 'ADA_TOKEN';
 
 /** Models confirmed present on the gateway's /v1/models listing. */
 export const ADA_MODELS: GatewayModel[] = [
+  /*
+   * reasoning: true on all three, and it is not cosmetic.
+   *
+   * pi only asks the provider for thinking when the model is declared capable
+   * of it, so with this false the thinkingLevel below is accepted and then
+   * ignored — and the model wrote its reasoning into the reply instead. Real
+   * replies opened with "I should keep my response short and wait for the user
+   * to reply."; 12 of 53 in one database did something like it.
+   *
+   * The gateway still returns only text blocks, never a thinking block, so the
+   * reasoning is kept server-side rather than handed to us. Absence of
+   * narration is the only observable, and it needs both this and a thinking
+   * level above 'off' — three runs each of all four combinations put narration
+   * in every one except both-set.
+   */
   {
     id: 'kr-claude-opus-5.5',
     name: 'Opus 5.5 (ada)',
     contextWindow: 1_000_000,
     maxTokens: 32_000,
+    reasoning: true,
     cost: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
   },
   {
@@ -39,6 +55,7 @@ export const ADA_MODELS: GatewayModel[] = [
     name: 'Sonnet 5.5 (ada)',
     contextWindow: 1_000_000,
     maxTokens: 32_000,
+    reasoning: true,
     cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   },
   {
@@ -46,6 +63,7 @@ export const ADA_MODELS: GatewayModel[] = [
     name: 'Haiku 4.5 (ada)',
     contextWindow: 200_000,
     maxTokens: 32_000,
+    reasoning: true,
     cost: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   },
 ];
