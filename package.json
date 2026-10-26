@@ -1,0 +1,63 @@
+{
+  "name": "grok-bot-lite",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/server/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "SANDBOX_DRIVER=local SANDBOX_ALLOW_LOCAL=1 DB_PATH=./data/smoke.db tsx src/smoke.ts",
+    "migrate": "tsx scripts/migrate-test.ts",
+    "e2e": "bash scripts/e2e.sh",
+    "mcp": "tsx scripts/mcp-test.ts",
+    "egress": "tsx scripts/egress-test.ts",
+    "targets": "tsx scripts/targets-test.ts",
+    "eval": "tsx scripts/eval.ts",
+    "docker": "tsx scripts/docker-test.ts",
+    "test": "pnpm typecheck && pnpm smoke && pnpm migrate && pnpm auth && pnpm classify && pnpm permission && pnpm ask && pnpm routines && pnpm handoff && pnpm group && pnpm mcp && pnpm egress && pnpm targets",
+    "pi": "tsx scripts/pi-test.ts",
+    "budget": "tsx scripts/budget-test.ts",
+    "intent": "tsx scripts/intent-live.ts",
+    "test:live": "pnpm pi && pnpm mcp:pi && pnpm memory:live && pnpm handoff:live && pnpm group:live && pnpm pi:docker && pnpm budget && pnpm intent && pnpm e2e && pnpm eval && pnpm browser && pnpm app:test && pnpm phone",
+    "pi:docker": "tsx scripts/pi-docker-test.ts",
+    "mcp:pi": "tsx scripts/mcp-pi-test.ts",
+    "auth": "tsx scripts/auth-test.ts",
+    "browser": "node scripts/browser-test.mjs",
+    "classify": "tsx scripts/classify-test.ts",
+    "permission": "tsx scripts/permission-test.ts",
+    "app": "electron desktop/main.cjs",
+    "app:test": "node scripts/app-test.mjs",
+    "build": "node scripts/build.mjs",
+    "dmg": "node scripts/pack-mac.mjs",
+    "dmg:test": "node scripts/dmg-test.mjs",
+    "phone": "node scripts/phone-test.mjs",
+    "lan": "BIND=lan tsx --env-file-if-exists=.env src/server/index.ts",
+    "handoff": "tsx scripts/handoff-test.ts",
+    "group": "tsx scripts/group-test.ts",
+    "handoff:live": "tsx scripts/handoff-live.ts",
+    "group:live": "tsx scripts/group-live.ts",
+    "memory:live": "tsx scripts/memory-live.ts",
+    "routines": "tsx scripts/routines-test.ts",
+    "ask": "tsx scripts/ask-test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "typebox": "^1.4.2",
+    "ws": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/ws": "8.5.13",
+    "electron": "37.8.0",
+    "electron-builder": "25.1.8",
+    "playwright-core": "1.49.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  },
+  "main": "desktop/main.cjs",
+  "version": "0.1.0",
+  "description": "Persistent AI teammates that work on a sandbox computer"
+}
