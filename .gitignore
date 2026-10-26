@@ -1,0 +1,12 @@
+node_modules/
+data/
+.env
+*.db
+*.db-wal
+*.db-shm
+*.log
+.DS_Store
+data/screenshots/
+release/
+dist/
+data/sessions/
