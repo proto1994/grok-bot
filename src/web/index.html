@@ -1,0 +1,1850 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bots</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root {
+    --bg:#fff; --panel:#f6f6f7; --fg:#18181b; --muted:#71717a; --line:#e7e7ea;
+    --bubble:#f1f1f4; --mine:#27272c; --mine-fg:#fafafa;
+    --accent:#2563eb; --accent-fg:#fff; --warn:#b45309;
+    --radius:18px;
+    --ring:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#16171a; --panel:#1d1e22; --fg:#eaeaef; --muted:#9b9ba6; --line:#2b2c33;
+      --bubble:#25262b; --mine:#e9e9ee; --mine-fg:#16171a;
+      --accent:#7cb0ff; --accent-fg:#101114; --warn:#fbbf24;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#16171a; --panel:#1d1e22; --fg:#eaeaef; --muted:#9b9ba6; --line:#2b2c33;
+    --bubble:#25262b; --mine:#e9e9ee; --mine-fg:#16171a;
+    --accent:#7cb0ff; --accent-fg:#101114; --warn:#fbbf24;
+  }
+
+  * { box-sizing:border-box; }
+  /* A class with its own `display` would otherwise override this attribute,
+     leaving an element visible while `el.hidden` reports true. */
+  [hidden] { display:none !important; }
+  html, body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    /* PingFang is named before the generic stacks: without it a mixed
+       Chinese/Latin line falls back per-glyph and the baseline wanders. */
+    font-family:-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font-size:15px;
+    line-height:1.6;
+    /* Chinese text reads better with a little tracking; Latin does not mind. */
+    letter-spacing:.01em;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    display:grid; grid-template-columns:272px 1fr; overflow:hidden;
+  }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:none; box-shadow:var(--ring); }
+  .field input:focus, .field textarea:focus, .field select:focus,
+  .cwrap:focus-within { box-shadow:var(--ring); border-color:var(--accent); }
+  /* The composer's ring belongs to the wrapper. Without this the input drew its
+     own inside it and focus looked like a box in a box. */
+  .cwrap input:focus, .cwrap input:focus-visible { outline:none; box-shadow:none; }
+  /* The create sheet's name field is its own control, outside .field, so the
+     generic focus ring applied on top of its border and drew a second box. */
+  .namefield:focus, .namefield:focus-visible {
+    outline:none; box-shadow:none; border-color:var(--accent);
+  }
+  button { cursor:pointer; }
+
+  /* ---------- sidebar ---------- */
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .sidetop { display:flex; gap:8px; justify-content:flex-end; padding:14px 14px 8px; }
+  .circle {
+    width:34px; height:34px; border-radius:50%; border:0; background:transparent;
+    color:var(--fg); display:grid; place-items:center;
+  }
+  .circle:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
+  .roster { flex:1; overflow-y:auto; padding:4px 8px 8px; }
+
+  /* Named for the roster, not "bot": a `.bot` class here would also match the
+     `.msg.bot` message bubble and lay its text out in a 38px grid column. */
+  .rosteritem {
+    display:grid; grid-template-columns:38px 1fr; gap:10px; align-items:center;
+    width:100%; text-align:left; border:0; background:transparent;
+    padding:9px 8px; border-radius:12px; margin-bottom:2px; color:inherit;
+  }
+  .rosteritem:hover { background:color-mix(in srgb, var(--fg) 6%, transparent); }
+  .rosteritem[aria-current="true"] { background:color-mix(in srgb, var(--fg) 10%, transparent); }
+  .avatar {
+    width:38px; height:38px; border-radius:12px; display:grid; place-items:center;
+    font-size:15px; font-weight:600; color:#fff; position:relative; flex:0 0 auto;
+  }
+  .avatar .dot {
+    position:absolute; right:-2px; bottom:-2px; width:11px; height:11px; border-radius:50%;
+    background:var(--warn); border:2px solid var(--panel);
+  }
+  /* A grid, so the name and the preview each get their own row; as plain
+     inline spans the preview ran straight on from the name. */
+  .rosteritem .meta { min-width:0; display:grid; gap:1px; }
+  .rosteritem .nm { font-weight:600; font-size:14px; }
+  .rosteritem .pv, .rosteritem .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rosteritem .pv { font-size:13px; color:var(--muted); }
+  .sidefoot { border-top:1px solid var(--line); padding:10px 12px; display:flex; align-items:center; gap:8px; }
+  .pill {
+    border:1px solid var(--line); background:var(--bg); border-radius:999px;
+    padding:7px 14px; font-size:13px; font-weight:500; flex:1; text-align:center;
+  }
+  .pill:hover { background:color-mix(in srgb, var(--fg) 5%, transparent); }
+
+  /* ---------- main ---------- */
+  main { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  /* The desktop window has no title bar, so this strip is what you drag it by.
+     Interactive children opt back out below, or they would stop responding. */
+  .topbar { position:relative; display:grid; place-items:center; padding:14px 16px 6px;
+            -webkit-app-region:drag; }
+  .topbar button, .topbar .namepill { -webkit-app-region:no-drag; }
+  /* Room for the traffic lights, which sit over the content on macOS. */
+  body[data-desktop="1"] .topbar { padding-left:80px; }
+  body[data-desktop="1"] .sidetop { -webkit-app-region:drag; padding-top:30px; }
+  body[data-desktop="1"] .sidetop button { -webkit-app-region:no-drag; }
+  .namepill {
+    display:inline-flex; align-items:center; gap:9px;
+    background:var(--bg); border:1px solid var(--line); border-radius:999px;
+    padding:6px 16px 6px 7px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+  }
+  .namepill .avatar { width:26px; height:26px; border-radius:50%; font-size:11px; }
+  .namepill .t { font-weight:600; font-size:14px; }
+  .topright { position:absolute; right:14px; top:14px; display:flex; align-items:center; gap:8px; }
+  .ghost {
+    border:1px solid var(--line); background:transparent; border-radius:999px;
+    padding:5px 12px; font-size:12px; color:var(--muted);
+  }
+  .ghost:hover { color:var(--fg); }
+
+  #log { flex:1; overflow-y:auto; padding:8px 0 20px; }
+  /* width:100% with min-width:0 on the children keeps one wide element — an
+     expanded tool output, a long path — from stretching the flex container and
+     squeezing every other bubble into a one-character column. */
+  .stream { width:100%; max-width:760px; margin:0 auto; padding:0 24px;
+            display:flex; flex-direction:column; align-items:flex-start; gap:10px; }
+  .stream > * { max-width:100%; min-width:0; }
+
+  /* pre-wrap would double every blank line now that markdown emits its own
+     breaks, so the bubble uses normal wrapping and the renderer handles layout. */
+  .msg { max-width:86%; padding:12px 16px; border-radius:var(--radius);
+         word-break:break-word; line-height:1.65; }
+  .msg.me { white-space:pre-wrap; }
+  .msg strong { font-weight:600; }
+  .msg code {
+    font:0.88em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background:color-mix(in srgb, var(--fg) 8%, transparent);
+    padding:1px 5px; border-radius:5px;
+  }
+  .msg a { color:var(--accent); text-decoration:none; word-break:break-all; }
+  .msg a:hover { text-decoration:underline; }
+  .msg .mdh { font-weight:600; margin:10px 0 2px; }
+  .msg .mdh:first-child { margin-top:0; }
+  .msg ul, .msg ol { margin:4px 0; padding-left:1.3em; }
+  .msg li { margin:2px 0; }
+  .msg br + br { display:none; }
+  .msg.bot { background:var(--bubble); align-self:flex-start; border-bottom-left-radius:6px; }
+  .msg.me { background:var(--mine); color:var(--mine-fg); align-self:flex-end; border-bottom-right-radius:6px; }
+  #log { min-width:0; }
+
+  /* Tool activity collapses to one quiet line; detail is opt-in. */
+  .activity { align-self:flex-start; max-width:86%; font-size:13px; color:var(--muted); }
+  .activity summary {
+    cursor:pointer; list-style:none; padding:3px 2px;
+    display:inline-flex; align-items:center; gap:7px; border-radius:8px;
+  }
+  .activity summary::-webkit-details-marker { display:none; }
+  .activity summary:hover { color:var(--fg); }
+  .activity .ic { width:15px; text-align:center; opacity:.8; }
+  .activity pre {
+    margin:6px 0 2px; padding:10px 12px; background:var(--bubble); border-radius:12px;
+    font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space:pre-wrap; word-break:break-word; max-height:320px; overflow:auto; color:var(--fg);
+  }
+
+  /* A question with answers to pick from. Lettered like the reference, so a
+     reply can also be given by typing the letter. */
+  .choices {
+    align-self:flex-start; max-width:86%; width:min(460px, 86%);
+    background:var(--bg); border:1px solid var(--line); border-radius:16px;
+    padding:14px 14px 8px;
+  }
+  .choices .q { font-weight:600; font-size:14px; margin:0 2px 8px; }
+  .choice {
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    border:0; background:transparent; border-radius:11px; padding:10px 10px;
+    font-size:14px; color:inherit; margin-bottom:2px;
+  }
+  .choice:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 6%, transparent); }
+  .choice:disabled { opacity:.5; }
+  .choice .key {
+    width:24px; height:24px; flex:0 0 auto; border-radius:7px;
+    border:1px solid var(--line); display:grid; place-items:center;
+    font-size:11px; color:var(--muted);
+  }
+  .choice[aria-pressed="true"] { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .choice[aria-pressed="true"] .key { border-color:var(--accent); color:var(--accent); }
+
+  .ask { align-self:flex-start; max-width:86%; background:var(--bubble);
+         border-radius:var(--radius); border-bottom-left-radius:6px; padding:13px 15px; }
+  .ask .h { font-weight:600; margin-bottom:3px; }
+  .ask .why { color:var(--muted); font-size:13px; margin-bottom:9px; }
+  .ask pre {
+    margin:0 0 11px; padding:9px 11px; background:var(--bg); border:1px solid var(--line);
+    border-radius:10px; font:12px/1.5 ui-monospace, Menlo, monospace;
+    white-space:pre-wrap; word-break:break-word; max-height:200px; overflow:auto;
+  }
+  .ask .row { display:flex; gap:8px; }
+  .ask button { border:0; border-radius:999px; padding:7px 17px; font-size:13px; font-weight:500; }
+  .ask .yes { background:var(--accent); color:var(--accent-fg); }
+  .ask .no { background:transparent; border:1px solid var(--line); }
+
+  /* The working indicator, at the foot of the conversation.
+     Beside the input it said only that something was happening; here, with the
+     bot's face and the current activity, it says what. */
+  .statusrow {
+    display:flex; align-items:center; gap:10px;
+    max-width:760px; width:100%; margin:0 auto; padding:2px 24px 8px;
+  }
+  .statusface { width:30px; height:30px; flex:0 0 auto; line-height:0; }
+  .statusface .botface { width:30px; height:30px; }
+  .statustext { font-size:13px; color:var(--muted); }
+  @media (max-width:760px) { .statusrow { padding:2px 14px 6px; } }
+
+  .empty { color:var(--muted); text-align:center; margin:18vh auto 0; max-width:340px; padding:0 24px; }
+
+  /* ---------- composer ---------- */
+  .composer { padding:10px 24px 20px; }
+  .cwrap {
+    max-width:760px; margin:0 auto; display:flex; align-items:center; gap:10px;
+    background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:7px 8px 7px 18px; transition:border-color .12s ease, box-shadow .12s ease;
+  }
+  .cwrap input { flex:1; background:transparent; border:0; outline:none; padding:7px 0; }
+  .send {
+    width:34px; height:34px; border-radius:50%; border:0; background:var(--accent);
+    color:var(--accent-fg); display:grid; place-items:center; flex:0 0 auto;
+    transition:filter .12s ease, opacity .12s ease;
+  }
+  .send:hover:not(:disabled) { filter:brightness(1.08); }
+  .send:disabled { opacity:.35; }
+  .hint { max-width:760px; margin:7px auto 0; font-size:11px; color:var(--muted); text-align:center; }
+
+  /* ---------- modal ---------- */
+  dialog { border:0; padding:0; background:transparent; max-width:none; }
+  dialog::backdrop { background:rgba(0,0,0,.42); }
+  .sheet {
+    width:min(620px, 92vw); max-height:84vh; overflow-y:auto; background:var(--bg);
+    border-radius:18px; padding:22px 24px 24px; box-shadow:0 20px 60px rgba(0,0,0,.28);
+  }
+  .sheet h2 { margin:0 0 16px; font-size:19px; }
+  .sheet .x { position:absolute; right:18px; top:16px; border:0; background:transparent; color:var(--muted); font-size:19px; }
+  .field { margin-bottom:13px; }
+  .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+  .field input, .field textarea, .field select {
+    width:100%; background:var(--panel); border:1px solid var(--line);
+    border-radius:11px; padding:9px 11px; outline:none;
+  }
+  .field textarea { resize:vertical; min-height:74px; }
+  .primary { width:100%; border:0; border-radius:11px; background:var(--accent);
+             color:var(--accent-fg); padding:12px; font-weight:500; font-size:14px; }
+  .primary:hover { filter:brightness(1.06); }
+  .note { font-size:12px; color:var(--muted); margin-top:7px; }
+  .err { font-size:13px; color:var(--warn); margin:9px 0 0; }
+  .mode { display:flex; gap:11px; align-items:flex-start; padding:11px 12px;
+          border:1px solid var(--line); border-radius:12px; margin-bottom:8px; cursor:pointer; }
+  .mode:hover { background:color-mix(in srgb, var(--fg) 4%, transparent); }
+  .mode[aria-checked="true"] { border-color:var(--accent);
+          background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .mode input { margin:3px 0 0; }
+  .mode .t { font-weight:500; font-size:14px; }
+  .mode .d { font-size:12px; color:var(--muted); margin-top:2px; }
+  .mode.danger[aria-checked="true"] { border-color:var(--warn);
+          background:color-mix(in srgb, var(--warn) 10%, transparent); }
+  /* A bot with the gate off should never be mistaken for a normal one. */
+  .fullbadge { font-size:11px; color:var(--warn); border:1px solid var(--warn);
+               border-radius:999px; padding:1px 8px; margin-left:6px; }
+
+  /* A group's avatar is a stack of its members', so a group is distinguishable
+     from a bot at a glance in the roster. */
+  .stack { position:relative; width:38px; height:38px; flex:0 0 auto; }
+  .stack .chip {
+    position:absolute; width:24px; height:24px; border-radius:50%;
+    display:grid; place-items:center; line-height:0;
+    background:var(--panel); box-shadow:0 0 0 2px var(--panel);
+  }
+  .stack .chip:nth-child(1) { left:0; top:0; }
+  .stack .chip:nth-child(2) { right:0; bottom:0; }
+
+  /* In a group every line needs an author; in a one-to-one chat the bubble
+     alone is enough. */
+  .author { font-size:11px; color:var(--muted); margin:2px 0 -4px 4px; }
+  .msg.peer { background:var(--bubble); align-self:flex-start; border-bottom-left-radius:6px; }
+  .sysline { align-self:center; font-size:12px; color:var(--muted); text-align:center;
+             max-width:72%; padding:2px 0; }
+  .members { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 0; }
+  .chipbtn { border:1px solid var(--line); background:transparent; border-radius:999px;
+             padding:5px 11px; font-size:12px; }
+  .chipbtn[aria-pressed="true"] { border-color:var(--accent);
+             background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .banner {
+    background:color-mix(in srgb, var(--warn) 14%, var(--bg));
+    border-bottom:1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+    color:var(--fg); font-size:13px; padding:9px 16px; display:flex; gap:10px; align-items:center;
+  }
+  .banner button { border:0; background:transparent; color:var(--muted); margin-left:auto; }
+  /* ---------- create-bot sheet ---------- */
+  .sheet.create { width:min(460px, 92vw); padding:20px 22px 16px; }
+  .sheet.create h2 { margin:0 0 4px; font-size:17px; }
+  .preview { display:grid; place-items:center; padding:14px 0 10px; }
+  .preview .botface { width:124px; height:124px; }
+  .namefield {
+    width:100%; text-align:center; font-size:15px; padding:13px 14px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; outline:none;
+  }
+  .namefield::placeholder { color:var(--muted); }
+
+  .shapes {
+    display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; margin:14px 0 2px;
+    justify-items:center;
+  }
+  .shapes button, .swatches button {
+    border:2px solid transparent; background:transparent; border-radius:50%;
+    padding:4px; display:grid; place-items:center; line-height:0;
+  }
+  .shapes button[aria-checked="true"], .swatches button[aria-checked="true"] {
+    border-color:color-mix(in srgb, var(--fg) 30%, transparent);
+  }
+  .shapes .botface { width:40px; height:40px; }
+
+  .swatches {
+    display:grid; grid-template-columns:repeat(6, 1fr); gap:6px; margin:10px 0 0;
+    justify-items:center;
+  }
+  .swatches i { width:34px; height:34px; border-radius:50%; display:block; }
+
+  .more { margin:12px 0 0; }
+  .more[open] { margin-bottom:4px; }
+  .more > .field:first-of-type { margin-top:10px; }
+  .more summary {
+    cursor:pointer; font-size:13px; color:var(--muted); padding:6px 0;
+    list-style:none; display:inline-flex; align-items:center; gap:6px;
+  }
+  .more summary::-webkit-details-marker { display:none; }
+  .more summary::before { content:'›'; transition:transform .15s ease; }
+  .more[open] summary::before { transform:rotate(90deg); }
+  .more summary:hover { color:var(--fg); }
+
+  .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+  .ghostbtn {
+    border:1px solid var(--line); background:transparent; border-radius:11px;
+    padding:10px 20px; font-size:14px;
+  }
+  .ghostbtn:hover { background:color-mix(in srgb, var(--fg) 5%, transparent); }
+  .dangerbtn {
+    width:100%; border:1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+    background:transparent; color:var(--warn); border-radius:11px; padding:10px;
+    font-size:14px;
+  }
+  .dangerbtn:hover { background:color-mix(in srgb, var(--warn) 10%, transparent); }
+  .primary.inline { width:auto; padding:10px 24px; }
+  .primary:disabled { opacity:.45; }
+
+  /* ---------- the face, and what it does while working ---------- */
+  .botface { display:block; overflow:visible; }
+  .botbody { transform-origin:50% 55%; }
+
+  /* Idle is still. Working breathes and blinks, so a glance at the sidebar says
+     which bots are busy without reading any text. */
+  .botface[data-state="working"] .botbody { animation:breathe 1.6s ease-in-out infinite; }
+  .botface[data-state="working"] .boteyes { animation:blink 3.4s ease-in-out infinite; }
+
+  @keyframes breathe {
+    0%, 100% { transform:scale(1) translateY(0) rotate(0deg); }
+    30%      { transform:scale(1.07, .94) translateY(2px) rotate(-3deg); }
+    65%      { transform:scale(.96, 1.06) translateY(-2px) rotate(3deg); }
+  }
+  @keyframes blink {
+    0%, 86%, 100% { transform:scaleY(1); }
+    90%           { transform:scaleY(.12); }
+    94%           { transform:scaleY(1); }
+  }
+  .boteyes { transform-origin:50% 50%; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .botface[data-state="working"] .botbody,
+    .botface[data-state="working"] .boteyes { animation:none; }
+  }
+
+  /* Routines: the summary line in the conversation, and the list in settings. */
+  .routinenote {
+    align-self:center; font-size:12px; color:var(--muted);
+    display:inline-flex; align-items:center; gap:6px; padding:2px 0;
+  }
+  .routinelist { margin:4px 0 0; }
+  .routine {
+    display:flex; align-items:center; gap:10px; padding:10px 2px;
+    border-bottom:1px solid var(--line);
+  }
+  .routine:last-child { border-bottom:0; }
+  .routine .rmeta { flex:1; min-width:0; }
+  .routine .rt { font-size:14px; }
+  .routine .rw { font-size:12px; color:var(--muted); margin-top:1px; }
+  .routine .rdel {
+    border:0; background:transparent; color:var(--muted); font-size:15px; padding:2px 6px;
+  }
+  .routine .rdel:hover { color:var(--warn); }
+
+  /* A switch, because a toggle is what this is. */
+  .sw {
+    width:40px; height:24px; flex:0 0 auto; border-radius:999px; border:0; padding:0;
+    background:color-mix(in srgb, var(--fg) 18%, transparent); position:relative;
+    transition:background .15s ease;
+  }
+  .sw::after {
+    content:''; position:absolute; top:3px; left:3px; width:18px; height:18px;
+    border-radius:50%; background:#fff; transition:transform .15s ease;
+    box-shadow:0 1px 2px rgba(0,0,0,.2);
+  }
+  .sw[aria-checked="true"] { background:#34c759; }
+  .sw[aria-checked="true"]::after { transform:translateX(16px); }
+
+  .tool { display:flex; align-items:center; gap:10px; padding:9px 2px; border-bottom:1px solid var(--line); }
+  .tool:last-child { border-bottom:0; }
+  .tool .n { font-weight:500; font-size:14px; flex:1; min-width:0; }
+  .tool .d { font-size:12px; color:var(--muted); font-weight:400; }
+  .tag { font-size:11px; border:1px solid var(--line); border-radius:999px; padding:2px 9px; color:var(--muted); flex:0 0 auto; }
+  .tag.ask { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 40%, var(--line)); }
+
+  /* On a phone the sidebar becomes a drawer rather than disappearing: hiding it
+     outright left no way to switch bots or create one, which is most of the
+     app. */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:9; display:none; }
+  .menubtn { display:none; }
+
+  @media (max-width:760px) {
+    body { grid-template-columns:1fr; }
+    aside {
+      position:fixed; top:0; bottom:0; left:0; width:280px; z-index:10;
+      transform:translateX(-100%); transition:transform .2s ease;
+      box-shadow:2px 0 16px rgba(0,0,0,.2);
+    }
+    body[data-drawer="open"] aside { transform:translateX(0); }
+    body[data-drawer="open"] .scrim { display:block; }
+    .menubtn {
+      display:grid; place-items:center; position:absolute; left:12px; top:14px;
+      width:34px; height:34px; border-radius:50%; border:0; background:transparent;
+      color:var(--fg); font-size:17px; z-index:2;
+    }
+    .topbar { padding-left:56px; }
+    /* Thumb-sized targets, and room for the home indicator. */
+    .composer { padding:10px 14px calc(14px + env(safe-area-inset-bottom)); }
+    .cwrap { padding:9px 9px 9px 15px; }
+    .send { width:38px; height:38px; }
+    .stream { padding:0 14px; }
+    .msg { max-width:92%; }
+    .ask button { padding:9px 19px; }
+    /* Three things competed for one row and overlapped. The sandbox label is
+       the least urgent, and it is still reachable inside the settings sheet. */
+    .topright { right:10px; }
+    .ghost { padding:6px 11px; font-size:11px; }
+    #whereBtn { display:none; }
+    .namepill { max-width:52vw; }
+    .namepill .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sheet { width:min(620px, 94vw); max-height:88vh; }
+  }
+</style>
+</head>
+<body>
+<div class="scrim" id="scrim"></div>
+<aside>
+  <div class="sidetop">
+    <button class="circle" id="newgroupbtn" title="新建群聊" aria-label="新建群聊">⧉</button>
+    <button class="circle" id="newbtn" title="新建 Bot" aria-label="新建 Bot">+</button>
+  </div>
+  <div class="roster" id="roster" role="list"></div>
+  <div class="sidefoot">
+    <button class="pill" id="appsbtn">连接应用</button>
+  </div>
+</aside>
+
+<main>
+  <div class="banner" id="banner" role="alert" hidden>
+    <span id="bannertext"></span>
+    <button id="bannerx" aria-label="关闭">✕</button>
+  </div>
+  <div class="topbar">
+    <button class="menubtn" id="menubtn" aria-label="Bot 列表">☰</button>
+    <div class="namepill" id="namepill" hidden>
+      <span class="avatar" id="topavatar"></span>
+      <span class="t" id="topname"></span>
+    </div>
+    <div class="topright">
+      <button class="ghost" id="whereBtn" hidden></button>
+      <button class="ghost" id="setBtn" hidden aria-label="设置">设置</button>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="statusrow" id="statusrow" hidden role="status">
+    <span class="statusface" id="statusface"></span>
+    <span class="statustext" id="statustext"></span>
+  </div>
+
+  <div class="composer">
+    <div class="cwrap">
+      <input id="text" placeholder="发消息…" autocomplete="off" aria-label="消息" />
+      <button class="send" id="sendbtn" aria-label="发送" disabled>↑</button>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+</main>
+
+<dialog id="newdlg">
+  <div class="sheet create" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>创建新 Bot</h2>
+
+    <form id="newform">
+      <div class="preview" id="bpreview"></div>
+
+      <input id="bname" class="namefield" placeholder="给你的 Bot 起个名字" required
+             autocomplete="off" />
+
+      <div class="shapes" id="bshapes" role="radiogroup" aria-label="形状"></div>
+      <div class="swatches" id="bcolors" role="radiogroup" aria-label="颜色"></div>
+
+      <!-- Optional, and folded away: naming the bot is the whole requirement,
+           and what it is for usually comes out of the first thing you ask it. -->
+      <details class="more">
+        <summary>更多设置</summary>
+        <div class="field">
+          <label for="bjob">职责 — 它负责什么，哪里必须停下来问你</label>
+          <textarea id="bjob" rows="3"
+            placeholder="留空也行。例：盯住发布流水线，失败时定位原因。不要自己重试部署。"></textarea>
+        </div>
+        <div class="field">
+          <label for="btarget">沙箱位置</label>
+          <select id="btarget"></select>
+        </div>
+        <div class="field">
+          <label for="bmode">权限</label>
+          <select id="bmode">
+            <option value="balanced">平衡 — 读取直接做，改动前问你</option>
+            <option value="strict">逐次确认 — 每次操作都问</option>
+            <option value="full">完全权限 — 什么都不问</option>
+          </select>
+        </div>
+      </details>
+
+      <p class="err" id="newerr" role="alert" hidden></p>
+
+      <div class="actions">
+        <button type="button" class="ghostbtn" data-close>取消</button>
+        <button class="primary inline" type="submit" id="bsubmit" disabled>创建</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="groupdlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>新建群聊</h2>
+    <form id="groupform">
+      <div class="field">
+        <label for="gname">名字</label>
+        <input id="gname" placeholder="发布小组" required />
+      </div>
+      <div class="field">
+        <label>成员 — 选 2 到 6 个</label>
+        <div class="members" id="gmembers"></div>
+      </div>
+      <button class="primary" type="submit">创建</button>
+      <p class="err" id="grouperr" role="alert" hidden></p>
+      <p class="note">
+        在群里用 @名字 指定谁来做，@everyone 让所有人回应。不加 @ 时由最合适的那个回答。
+        Bot 回复里 @ 了别人，下一轮就交给对方。
+      </p>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="appsdlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>连接应用</h2>
+    <div id="toollist"></div>
+    <p class="note">
+      来自 MCP server 的工具默认按「需审批」处理，除非在 <code>mcp.json</code> 里把它列进
+      <code>readOnlyTools</code>。在 <code>mcp.json</code> 里增删 server 后重启生效。
+    </p>
+  </div>
+</dialog>
+
+<dialog id="setdlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>设置</h2>
+    <p class="note" style="margin-top:0">权限 — 这个 Bot 动手之前要不要先问你</p>
+    <div id="modes"></div>
+    <p class="note" id="modenote"></p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
+    <p class="note" style="margin-top:0">沙箱位置 — 这个 Bot 的电脑在哪</p>
+    <button class="pill" id="setWhere" style="width:100%"></button>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
+    <p class="note" style="margin-top:0">例行任务 — 它会按时自己做的事</p>
+    <div class="routinelist" id="routinelist"></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
+    <button class="dangerbtn" id="delbot">删除这个 Bot</button>
+    <p class="note" id="delnote">
+      对话记录和它记住的上下文都会删掉。沙箱里的文件和登录状态是这台机器上共用的，不会动。
+    </p>
+  </div>
+</dialog>
+
+<dialog id="wheredlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>沙箱位置</h2>
+    <div class="field">
+      <label for="switchtarget">这个 Bot 的电脑在哪</label>
+      <select id="switchtarget"></select>
+    </div>
+    <p class="note" id="whereinfo"></p>
+    <p class="note">
+      切换等于换一台机器：那边的工作区是独立的，当前的文件、已登录的站点、装过的包都不会跟过去。
+    </p>
+  </div>
+</dialog>
+<script type="module">
+import {
+  botAvatar, COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, derive, SHAPES,
+} from './shapes.js';
+
+const $ = (s) => document.querySelector(s);
+
+let bots = [], current = null, runId = null, targets = { default: null, targets: [] };
+// A group is selected the same way a bot is; `current.kind` says which.
+let groups = [];
+/*
+ * Which bots are mid-run.
+ *
+ * Held here rather than on the elements: the roster is rebuilt on every step of
+ * every bot, and a repaint used to reset each face to idle. A bot working in the
+ * background then looked asleep.
+ */
+const working = new Set();
+let busy = false;
+
+function showBanner(msg) {
+  $('#bannertext').textContent = msg;
+  $('#banner').hidden = false;
+}
+$('#bannerx').onclick = () => { $('#banner').hidden = true; };
+
+/*
+ * The token comes from the page the server rendered. A phone follows a pairing
+ * link with ?token=…, which the server also honours; it is stripped from the
+ * address bar afterwards so it does not sit in history or get shared by
+ * copying the URL.
+ */
+const TOKEN = window.__TOKEN__ ?? new URL(location.href).searchParams.get('token') ?? '';
+if (new URL(location.href).searchParams.has('token')) {
+  const clean = new URL(location.href);
+  clean.searchParams.delete('token');
+  history.replaceState(null, '', clean);
+}
+
+const api = async (p, opts) => {
+  const r = await fetch(p, {
+    ...opts,
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${TOKEN}`,
+      ...(opts?.headers ?? {}),
+    },
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
+  return r.status === 204 ? null : r.json();
+};
+
+/* Nothing should fail silently: an unhandled rejection is still a failure the
+   person needs to see. */
+addEventListener('unhandledrejection', (e) => {
+  showBanner(`出错了：${e.reason?.message ?? e.reason}`);
+});
+addEventListener('error', (e) => {
+  // A failed subresource (an icon, say) fires this with no message and is not
+  // something to put in front of the person.
+  if (e.message) showBanner(`出错了：${e.message}`);
+});
+
+/**
+ * A bot's face. Falls back to one derived from its id, so bots made before the
+ * picker existed still look like themselves rather than like each other.
+ */
+function look(bot) {
+  const d = derive(bot.id);
+  return { shape: bot.shape ?? d.shape, color: bot.color ?? d.color };
+}
+
+function paintAvatar(el, bot, attention, state = 'idle') {
+  const { shape, color } = look(bot);
+  el.className = 'avatar';
+  el.innerHTML = '';
+  el.append(botAvatar(shape, color, { size: 38, state }));
+  if (attention) {
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    el.append(dot);
+  }
+}
+
+/** Marks a bot's avatars as working, so they move while it runs. */
+function setAvatarState(botId, state) {
+  if (state === 'working') working.add(botId);
+  else working.delete(botId);
+  for (const host of document.querySelectorAll(`[data-avatar-for="${botId}"]`)) {
+    // The name pill is a label, not an indicator. Animating it alongside the
+    // roster row and the status row made one bot working look like three
+    // things happening.
+    if (host.closest('.namepill')) continue;
+    for (const el of host.querySelectorAll('.botface')) el.dataset.state = state;
+  }
+}
+
+/* ---------- roster ---------- */
+function paintTopBar() {
+  if (!current) return;
+  $('#topname').textContent = current.name;
+  $('#whereBtn').hidden = false;
+  $('#whereBtn').textContent = targetLabel(current);
+  $('#setBtn').hidden = false;
+
+  // A persistent marker, so "nothing will be asked" is never a surprise.
+  $('#namepill').querySelector('.fullbadge')?.remove();
+  if (current.permissionMode === 'full') {
+    const b = document.createElement('span');
+    b.className = 'fullbadge';
+    b.textContent = '完全权限';
+    $('#namepill').append(b);
+  }
+}
+
+function groupAvatar(el, group) {
+  el.className = 'stack';
+  el.innerHTML = '';
+  for (const id of group.members.slice(0, 2)) {
+    const bot = bots.find((b) => b.id === id);
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    if (bot) {
+      const { shape, color } = look(bot);
+      chip.append(botAvatar(shape, color, { size: 24 }));
+    }
+    el.append(chip);
+  }
+}
+
+function renderRoster() {
+  const r = $('#roster');
+  r.innerHTML = '';
+
+  for (const g of groups) {
+    const el = document.createElement('button');
+    el.className = 'rosteritem';
+    el.setAttribute('role', 'listitem');
+    el.setAttribute('aria-current', String(g.id === current?.id));
+
+    const av = document.createElement('span');
+    av.dataset.avatarFor = g.id;
+    groupAvatar(av, g);
+    if (g.members?.some((id) => working.has(id))) {
+      for (const f of av.querySelectorAll('.botface')) f.dataset.state = 'working';
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = g.name;
+    const pv = document.createElement('span');
+    pv.className = 'pv';
+    pv.textContent = (g.memberNames ?? []).join('、');
+    meta.append(nm, pv);
+
+    el.append(av, meta);
+    el.onclick = () => { selectGroup(g); drawer(false); };
+    r.append(el);
+  }
+
+  for (const b of bots) {
+    const el = document.createElement('button');
+    el.className = 'rosteritem';
+    el.setAttribute('role', 'listitem');
+    el.setAttribute('aria-current', String(b.id === current?.id));
+
+    const av = document.createElement('span');
+    av.dataset.avatarFor = b.id;
+    paintAvatar(av, b, b.needsAttention, working.has(b.id) ? 'working' : 'idle');
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = b.name;
+    const pv = document.createElement('span');
+    pv.className = 'pv';
+    pv.textContent = b.permissionMode === 'full'
+      ? '完全权限 · ' + (b.preview?.body ?? b.job).replace(/\s+/g, ' ')
+      : b.needsAttention ? '等你批准' : (b.preview?.body ?? b.job).replace(/\s+/g, ' ');
+    meta.append(nm, pv);
+
+    el.append(av, meta);
+    el.onclick = () => { selectBot(b); drawer(false); };
+    r.append(el);
+  }
+}
+
+/* ---------- stream ---------- */
+function stream() {
+  let s = $('#log').querySelector('.stream');
+  if (!s) {
+    $('#log').innerHTML = '';
+    s = document.createElement('div');
+    s.className = 'stream';
+    $('#log').append(s);
+  }
+  return s;
+}
+const toBottom = () => { $('#log').scrollTop = $('#log').scrollHeight; };
+
+/**
+ * Renders the small amount of markdown a model actually produces.
+ *
+ * Built from text nodes rather than innerHTML: the content is model output and
+ * tool results, so nothing here may become markup. Bold, inline code, headings,
+ * list items and links are the forms that show up; everything else stays
+ * literal, which is better than half-rendering it.
+ */
+function renderMarkdown(text, into) {
+  const lines = String(text).split('\n');
+  let list = null;
+
+  const inline = (parent, str) => {
+    // One pass over **bold**, `code` and bare urls, in that order of greed.
+    const pattern = /(\*\*[^*\n]+\*\*)|(`[^`\n]+`)|(https?:\/\/[^\s)）]+)/g;
+    let last = 0;
+    for (const m of str.matchAll(pattern)) {
+      if (m.index > last) parent.append(document.createTextNode(str.slice(last, m.index)));
+      if (m[1]) {
+        const b = document.createElement('strong');
+        b.textContent = m[1].slice(2, -2);
+        parent.append(b);
+      } else if (m[2]) {
+        const c = document.createElement('code');
+        c.textContent = m[2].slice(1, -1);
+        parent.append(c);
+      } else {
+        const a = document.createElement('a');
+        a.href = m[3];
+        a.textContent = m[3];
+        a.target = '_blank';
+        a.rel = 'noreferrer noopener';
+        parent.append(a);
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < str.length) parent.append(document.createTextNode(str.slice(last)));
+  };
+
+  for (const line of lines) {
+    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
+    const numbered = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
+    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+
+    if (bullet || numbered) {
+      const tag = bullet ? 'ul' : 'ol';
+      if (!list || list.tagName.toLowerCase() !== tag) {
+        list = document.createElement(tag);
+        into.append(list);
+      }
+      const li = document.createElement('li');
+      inline(li, (bullet ? bullet[1] : numbered[2]));
+      list.append(li);
+      continue;
+    }
+    list = null;
+
+    if (heading) {
+      const h = document.createElement('div');
+      h.className = 'mdh';
+      inline(h, heading[2]);
+      into.append(h);
+      continue;
+    }
+    if (!line.trim()) {
+      into.append(document.createElement('br'));
+      continue;
+    }
+    const p = document.createElement('div');
+    inline(p, line);
+    into.append(p);
+  }
+}
+
+function bubble(kind, body) {
+  const el = document.createElement('div');
+  el.className = `msg ${kind}`;
+  if (kind === 'me') el.textContent = body; // shown back exactly as typed
+  else renderMarkdown(body, el);
+  stream().append(el);
+}
+
+/* Tool work is one quiet line, expandable. The conversation stays prose. */
+// Keyed by pi's tool names. An unknown tool (an MCP one, say) falls back to a
+// generic phrasing rather than showing raw json.
+const VERB = {
+  bash: '运行了命令',
+  read: '读取了文件',
+  write: '写入了文件',
+  edit: '修改了文件',
+  ls: '看了目录',
+  ask_choice: '问了你一个问题',
+  schedule_routine: '排了一个例行任务',
+  list_routines: '看了已有的例行任务',
+  list_bots: '看了有哪些 Bot',
+  message_bot: '找了另一个 Bot',
+};
+function activityLabel(tool, argsJson) {
+  const base = VERB[tool] ?? `用了 ${tool}`;
+  try {
+    const a = JSON.parse(argsJson);
+    if (a.command) return `${base}：${String(a.command).slice(0, 70)}`;
+    if (a.bot) return `${base}：${a.bot}`;
+    if (a.path) return `${base}：${a.path}`;
+    if (a.text) return `${base}：${String(a.text).slice(0, 60)}`;
+  } catch { /* fall through to the plain verb */ }
+  return base;
+}
+
+function activityLine(step) {
+  const d = document.createElement('details');
+  d.className = 'activity';
+  d.dataset.tool = step.tool ?? '';
+  const sm = document.createElement('summary');
+  const ic = document.createElement('span');
+  ic.className = 'ic';
+  ic.textContent = '›';
+  const tx = document.createElement('span');
+  tx.textContent = activityLabel(step.tool, step.body);
+  sm.append(ic, tx);
+  const pre = document.createElement('pre');
+  pre.textContent = step.body;
+  d.append(sm, pre);
+  stream().append(d);
+  return d;
+}
+
+/* A result folds into the activity line it belongs to, not a new bubble. */
+function attachResult(step) {
+  const open = [...stream().querySelectorAll(`.activity[data-tool="${step.tool ?? ''}"]`)].pop();
+  if (!open) return activityLine(step);
+  const pre = document.createElement('pre');
+  pre.textContent = step.body;
+  open.append(pre);
+  if (/^(denied|error|interrupted)/i.test(step.body)) {
+    open.querySelector('summary > span:last-child').textContent += ' — 未执行';
+    open.open = true;
+  }
+}
+
+/*
+ * A question with answers to pick from.
+ *
+ * Answering sends the chosen text as an ordinary message, so the transcript
+ * reads the way it would have if the person had typed it, and the model needs
+ * no special handling for the reply.
+ */
+function choiceCard(question, options) {
+  const card = document.createElement('div');
+  card.className = 'choices';
+
+  const q = document.createElement('div');
+  q.className = 'q';
+  q.textContent = question;
+  card.append(q);
+
+  const letters = 'ABCDEFGH';
+  options.forEach((text, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'choice';
+    b.setAttribute('aria-pressed', 'false');
+
+    const key = document.createElement('span');
+    key.className = 'key';
+    key.textContent = letters[i] ?? String(i + 1);
+    const label = document.createElement('span');
+    label.textContent = text;
+    b.append(key, label);
+
+    b.onclick = () => {
+      // Lock the whole card: a second pick would read as a second answer.
+      for (const other of card.querySelectorAll('.choice')) other.disabled = true;
+      b.setAttribute('aria-pressed', 'true');
+      $('#text').value = text;
+      send();
+    };
+    card.append(b);
+  });
+
+  stream().append(card);
+  toBottom();
+  return card;
+}
+
+function askCard(a) {
+  const el = document.createElement('div');
+  el.className = 'ask';
+  el.id = 'ap-' + a.id;
+
+  const h = document.createElement('div');
+  h.className = 'h';
+  h.textContent = `要我${(VERB[a.tool] ?? `调用 ${a.tool}`).replace(/了/, '')}吗？`;
+
+  const why = document.createElement('div');
+  why.className = 'why';
+  why.textContent = a.reason;
+
+  const pre = document.createElement('pre');
+  try {
+    const parsed = JSON.parse(a.args);
+    pre.textContent = parsed.command ?? parsed.path ?? a.args;
+  } catch { pre.textContent = a.args; }
+
+  const row = document.createElement('div');
+  row.className = 'row';
+  const yes = document.createElement('button');
+  yes.className = 'yes';
+  yes.textContent = '批准';
+  yes.onclick = () => resolve(a.id, true);
+  const no = document.createElement('button');
+  no.className = 'no';
+  no.textContent = '拒绝';
+  no.onclick = () => resolve(a.id, false);
+  row.append(yes, no);
+
+  el.append(h, why, pre, row);
+  stream().append(el);
+  toBottom();
+}
+
+/*
+ * The foot-of-conversation status.
+ *
+ * `activity` is the last thing the bot started doing, so the line reads as
+ * progress rather than as a generic wait. It falls back to a plain "在做了"
+ * before any tool has run.
+ */
+let activity = '';
+
+function paintStatus(on) {
+  const row = $('#statusrow');
+  row.hidden = !on;
+  if (!on) {
+    activity = '';
+    return;
+  }
+
+  const face = $('#statusface');
+  if (!face.querySelector('.botface')) {
+    face.innerHTML = '';
+    if (current && current.kind !== 'group') {
+      const { shape, color } = look(current);
+      face.append(botAvatar(shape, color, { size: 30, state: 'working' }));
+    }
+  }
+  $('#statustext').textContent = activity || '在做了';
+}
+
+function noteActivity(text) {
+  activity = text;
+  if (!$('#statusrow').hidden) $('#statustext').textContent = text;
+}
+
+function setBusy(on) {
+  busy = on;
+  // The face is the status indicator: a glance at the sidebar says which bots
+  // are busy, with no text to read.
+  if (current && current.kind !== 'group') setAvatarState(current.id, on ? 'working' : 'idle');
+
+  paintStatus(on);
+
+  // Sending stays available while the bot works — the message queues behind the
+  // current turn. Only an empty box disables it.
+  $('#sendbtn').disabled = !$('#text').value.trim();
+}
+
+async function resolve(id, approved) {
+  document.getElementById('ap-' + id)?.remove();
+  setBusy(true);
+  await api('/api/approvals/' + id, { method: 'POST', body: JSON.stringify({ approved }) });
+}
+
+function renderStep(s) {
+  if (s.kind === 'user_message') bubble('me', s.body);
+  else if (s.kind === 'assistant_text') bubble('bot', s.body);
+  else if (s.kind === 'tool_call') {
+    activityLine(s);
+    // The status line follows the work: "运行了命令…", "找了另一个 Bot…".
+    noteActivity(activityLabel(s.tool, s.body));
+  }
+  else if (s.kind === 'tool_result') attachResult(s);
+  else if (s.kind === 'note' && s.body.startsWith('ask_choice ')) {
+    // Replayed from history, so a reload does not lose the question.
+    try {
+      const q = JSON.parse(s.body.slice('ask_choice '.length));
+      choiceCard(q.question, q.options);
+    } catch { /* a malformed note is not worth surfacing */ }
+  }
+  else if (s.kind === 'note') {
+    const el = document.createElement('div');
+    el.className = 'activity';
+    el.textContent = s.body;
+    stream().append(el);
+  }
+}
+/* ---------- selection ---------- */
+function targetLabel(b) {
+  const name = b.sandboxTarget ?? targets.default;
+  const t = targets.targets.find((x) => x.name === name);
+  if (!t) return name ?? '未配置';
+  return t.kind === 'local' ? `${t.name} · 无隔离` : t.name;
+}
+
+async function selectBot(b) {
+  current = b;
+  runId = null;
+  renderRoster();
+
+  $('#namepill').hidden = false;
+  $('#topavatar').dataset.avatarFor = b.id;
+  paintAvatar($('#topavatar'), b, false, 'idle');
+  paintTopBar();
+  $('#text').placeholder = `给 ${b.name} 发消息…`;
+  $('#hint').textContent = b.job;
+
+  $('#log').innerHTML = '';
+  activity = '';
+  $('#statusface').innerHTML = '';
+  const runs = await api(`/api/bots/${b.id}/runs`);
+  // Oldest first so the conversation reads top to bottom.
+  for (const r of runs.slice(0, 8).reverse()) {
+    const { steps } = await api('/api/runs/' + r.id);
+    steps.forEach(renderStep);
+  }
+  const last = runs[0];
+  if (last) {
+    runId = last.id;
+    // Every prompt this bot is waiting on, not just the newest run's: a routine
+    // that fired overnight parks on a run nobody started, and the bot would
+    // otherwise sit still with nothing on screen explaining it.
+    const open = await api('/api/approvals');
+    open.filter((a) => a.botId === b.id && a.resolvedAt === null).forEach(askCard);
+    setBusy(last.status === 'running');
+  }
+  if (!runs.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = '交给它一个有明确完成标准的任务。需要动真实东西时它会先问你。';
+    $('#log').append(e);
+  }
+  toBottom();
+}
+
+/* ---------- sending ---------- */
+async function send() {
+  const t = $('#text').value.trim();
+  // `busy` is not a reason to refuse: the message queues behind the turn.
+  if (!t || !current) return;
+  $('#text').value = '';
+  $('#log').querySelector('.empty')?.remove();
+  setBusy(true);
+  toBottom();
+
+  if (current.kind === 'group') {
+    // The group echoes the message back over the websocket along with every
+    // reply, so this does not render it locally — doing both showed it twice.
+    try {
+      await api(`/api/groups/${current.id}/messages`, {
+        method: 'POST', body: JSON.stringify({ text: t }),
+      });
+    } catch (e) {
+      setBusy(false);
+      groupLine({ body: `发送失败：${e.message}`, botId: null }, '系统');
+    }
+    return;
+  }
+
+  bubble('me', t);
+  try {
+    await api(`/api/bots/${current.id}/messages`, {
+      method: 'POST', body: JSON.stringify({ text: t }),
+    });
+  } catch (e) {
+    setBusy(false);
+    bubble('bot', `发送失败：${e.message}`);
+  }
+}
+
+$('#sendbtn').onclick = send;
+$('#text').oninput = () => { $('#sendbtn').disabled = !$('#text').value.trim(); };
+$('#text').onkeydown = (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+};
+
+/* ---------- dialogs ---------- */
+function fillTargets(el, selected) {
+  el.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = `默认（${targets.default ?? '未配置'}）`;
+  el.append(def);
+  for (const t of targets.targets) {
+    const o = document.createElement('option');
+    o.value = t.name;
+    o.textContent = t.kind === 'local' ? `${t.name} — 无隔离` : `${t.name} — ${t.description}`;
+    el.append(o);
+  }
+  el.value = selected ?? '';
+}
+
+for (const b of document.querySelectorAll('[data-close]')) {
+  b.onclick = (e) => e.target.closest('dialog').close();
+}
+
+/* ---------- the create sheet ---------- */
+let picked = { shape: DEFAULT_SHAPE, color: DEFAULT_COLOR };
+
+function paintPreview() {
+  const box = $('#bpreview');
+  box.innerHTML = '';
+  // The preview works while you are choosing, so the animation is visible
+  // before the bot exists.
+  box.append(botAvatar(picked.shape, picked.color, { size: 124, state: 'working' }));
+
+  for (const b of $('#bshapes').children) {
+    b.setAttribute('aria-checked', String(b.dataset.shape === picked.shape));
+    b.querySelector('.botface')?.replaceWith(botAvatar(b.dataset.shape, picked.color, { size: 40 }));
+  }
+  for (const b of $('#bcolors').children) {
+    b.setAttribute('aria-checked', String(b.dataset.color === picked.color));
+  }
+}
+
+function buildPickers() {
+  const shapes = $('#bshapes');
+  shapes.innerHTML = '';
+  for (const s2 of SHAPES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.shape = s2.id;
+    b.append(botAvatar(s2.id, picked.color, { size: 40 }));
+    b.onclick = () => { picked.shape = s2.id; paintPreview(); };
+    shapes.append(b);
+  }
+
+  const colors = $('#bcolors');
+  colors.innerHTML = '';
+  for (const c of COLORS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.color = c.id;
+    b.setAttribute('aria-label', c.id);
+    const dot = document.createElement('i');
+    dot.style.background = c.hex;
+    b.append(dot);
+    b.onclick = () => { picked.color = c.id; paintPreview(); };
+    colors.append(b);
+  }
+  paintPreview();
+}
+
+$('#newbtn').onclick = () => {
+  // A different shape each time, so a roster of bots does not end up identical.
+  picked = derive(String(Date.now()));
+  fillTargets($('#btarget'), '');
+  $('#bname').value = '';
+  $('#bjob').value = '';
+  $('#newerr').hidden = true;
+  $('#bsubmit').disabled = true;
+  buildPickers();
+  $('#newdlg').showModal();
+  $('#bname').focus();
+};
+
+// Create stays disabled until there is a name, which is the only requirement.
+$('#bname').oninput = () => { $('#bsubmit').disabled = !$('#bname').value.trim(); };
+
+$('#newform').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $('#bname').value.trim();
+  const job = $('#bjob').value.trim(); // optional
+  if (!name) return;
+
+  const btn = $('#newform button[type="submit"]');
+  const err = $('#newerr');
+  err.hidden = true;
+  btn.disabled = true;
+  try {
+    const bot = await api('/api/bots', {
+      method: 'POST',
+      body: JSON.stringify({
+      name, job,
+      sandboxTarget: $('#btarget').value || null,
+      permissionMode: $('#bmode').value,
+      shape: picked.shape,
+      color: picked.color,
+    }),
+    });
+    $('#bname').value = ''; $('#bjob').value = '';
+    $('#newdlg').close();
+    bots.push({ ...bot, preview: null, needsAttention: false });
+    await selectBot(bot);
+    // On a phone the drawer would otherwise stay open over the conversation,
+    // covering the composer.
+    drawer(false);
+
+    /*
+     * Open with a question rather than an empty box.
+     *
+     * Naming a bot is all the create sheet asks for, so at this point neither
+     * side knows what it is for. Letting it ask gets that settled in one tap
+     * instead of leaving the person to compose an opening brief.
+     */
+    setBusy(true);
+    try {
+      await api(`/api/bots/${bot.id}/greet`, { method: 'POST' });
+    } catch (e3) {
+      setBusy(false);
+      showBanner(`开场失败：${e3.message}`);
+    }
+  } catch (e2) {
+    // A failure has to land somewhere the person is looking, not only in the
+    // network tab.
+    err.textContent = `创建失败：${e2.message}`;
+    err.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$('#appsbtn').onclick = async () => {
+  const list = $('#toollist');
+  list.textContent = '读取中…';
+  $('#appsdlg').showModal();
+  try {
+    const tools = await api('/api/tools');
+    list.innerHTML = '';
+    for (const t of tools) {
+      const row = document.createElement('div');
+      row.className = 'tool';
+      const n = document.createElement('div');
+      n.className = 'n';
+      n.textContent = t.name;
+      const d = document.createElement('div');
+      d.className = 'd';
+      d.textContent = t.description;
+      n.append(d);
+      const tag = document.createElement('span');
+      const asks = t.risk !== 'read';
+      tag.className = 'tag' + (asks ? ' ask' : '');
+      tag.textContent = asks ? '需审批' : '只读';
+      row.append(n, tag);
+      list.append(row);
+    }
+  } catch (e) {
+    list.textContent = `读取失败：${e.message}`;
+  }
+};
+
+const MODES = [
+  { id: 'strict',   t: '逐次确认',   d: '每一次操作都先问你，包括只读的。' },
+  { id: 'balanced', t: '平衡（默认）', d: '读取类操作直接做；要改东西或联网时问你。' },
+  { id: 'full',     t: '完全权限',   d: '什么都不问。包括删除文件、运行任意命令、访问网络。',
+    danger: true },
+];
+
+function renderModes() {
+  const box = $('#modes');
+  box.innerHTML = '';
+  const currentMode = current?.permissionMode ?? 'balanced';
+
+  for (const m of MODES) {
+    const el = document.createElement('label');
+    el.className = 'mode' + (m.danger ? ' danger' : '');
+    el.setAttribute('role', 'radio');
+    el.setAttribute('aria-checked', String(m.id === currentMode));
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'mode';
+    radio.value = m.id;
+    radio.checked = m.id === currentMode;
+
+    const text = document.createElement('div');
+    const t = document.createElement('div');
+    t.className = 't';
+    t.textContent = m.t;
+    const d = document.createElement('div');
+    d.className = 'd';
+    d.textContent = m.d;
+    text.append(t, d);
+
+    el.append(radio, text);
+    radio.onchange = () => setMode(m.id);
+    box.append(el);
+  }
+
+  $('#modenote').textContent = currentMode === 'full'
+    ? '这个 Bot 的审批已关闭。它的操作仍会记录在对话里，但不会再停下来等你。'
+    : '';
+}
+
+async function setMode(mode) {
+  if (!current) return;
+  if (mode === 'full' && !confirm(
+    `把「${current.name}」设成完全权限？\n\n` +
+    `它将不再就任何操作征求同意 —— 包括删除文件、运行任意命令、访问网络。\n` +
+    `当前沙箱：${targetLabel(current)}`
+  )) {
+    renderModes();
+    return;
+  }
+  const r = await api(`/api/bots/${current.id}/permission`, {
+    method: 'PATCH', body: JSON.stringify({ mode }),
+  });
+  current = r.bot;
+  const i = bots.findIndex((b) => b.id === current.id);
+  if (i >= 0) bots[i] = { ...bots[i], ...current };
+  renderModes();
+  renderRoster();
+  paintTopBar();
+}
+
+$('#setBtn').onclick = () => {
+  if (current?.kind === 'group') return;
+  renderModes();
+  // The sandbox button is hidden on a phone, so surface it here too.
+  $('#setWhere').textContent = targetLabel(current);
+  void renderRoutines();
+  $('#setdlg').showModal();
+};
+
+$('#delbot').onclick = async () => {
+  if (!current || current.kind === 'group') return;
+  // Named in the prompt rather than a bare "are you sure": the roster can hold
+  // eight bots with similar names.
+  if (!confirm(`删除「${current.name}」？\n\n它的对话记录和记住的上下文都会删掉，这一步不能撤销。`)) return;
+
+  const id = current.id;
+  try {
+    await api(`/api/bots/${id}`, { method: 'DELETE' });
+  } catch (e) {
+    /*
+     * A bot mid-task made delete fail outright, leaving the only way forward as
+     * waiting for work the person had just decided to throw away. Stopping it
+     * is what they meant.
+     */
+    if (/正在工作/.test(e.message)) {
+      try {
+        const runs = await api(`/api/bots/${id}/runs`);
+        const live = runs.find((r) => r.status === 'running' || r.status === 'waiting_approval');
+        if (live) await api(`/api/runs/${live.id}/stop`, { method: 'POST' });
+        await api(`/api/bots/${id}`, { method: 'DELETE' });
+      } catch (e2) {
+        showBanner(`删除失败：${e2.message}`);
+        return;
+      }
+    } else {
+      showBanner(`删除失败：${e.message}`);
+      return;
+    }
+  }
+  $('#setdlg').close();
+  bots = bots.filter((b) => b.id !== current.id);
+  current = null;
+  runId = null;
+  $('#namepill').hidden = true;
+  $('#whereBtn').hidden = true;
+  $('#setBtn').hidden = true;
+  $('#log').innerHTML = '';
+  $('#hint').textContent = '';
+  await refreshRoster();
+  if (bots[0]) selectBot(bots[0]);
+  else {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = '左上角 + 新建一个 Bot。';
+    $('#log').append(e);
+  }
+};
+
+$('#setWhere').onclick = () => {
+  $('#setdlg').close();
+  $('#whereBtn').click();
+};
+
+/* ---------- groups ---------- */
+
+/** A line in a group, with the author above it. */
+function groupLine(message, authorName) {
+  const stream_ = stream();
+  if (authorName === '系统') {
+    const el = document.createElement('div');
+    el.className = 'sysline';
+    el.textContent = message.body;
+    stream_.append(el);
+    toBottom();
+    return;
+  }
+  const mine = message.botId === null;
+  if (!mine) {
+    const who = document.createElement('div');
+    who.className = 'author';
+    who.textContent = authorName;
+    stream_.append(who);
+  }
+  const el = document.createElement('div');
+  el.className = `msg ${mine ? 'me' : 'peer'}`;
+  if (mine) el.textContent = message.body;
+  else renderMarkdown(message.body, el);
+  stream_.append(el);
+  toBottom();
+}
+
+async function selectGroup(g) {
+  current = { ...g, kind: 'group' };
+  runId = null;
+  renderRoster();
+
+  $('#namepill').hidden = false;
+  groupAvatar($('#topavatar'), g);
+  $('#topname').textContent = g.name;
+  // A group has no single sandbox or permission mode; those live on its members.
+  $('#whereBtn').hidden = true;
+  $('#setBtn').hidden = true;
+  $('#namepill').querySelector('.fullbadge')?.remove();
+
+  const detail = await api(`/api/groups/${g.id}`);
+  current.members = detail.members.map((m) => m.id);
+  current.memberNames = detail.members.map((m) => m.name);
+  $('#text').placeholder = `发给 ${g.name}（@ 指定成员）…`;
+  $('#hint').textContent = detail.members.map((m) => `@${m.name}`).join(' ');
+
+  $('#log').innerHTML = '';
+  const names = new Map(detail.members.map((m) => [m.id, m.name]));
+  for (const m of detail.messages) {
+    groupLine(m, m.botId ? (names.get(m.botId) ?? '某个 Bot') : '用户');
+  }
+  if (!detail.messages.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = '给每个阶段指定一个负责人，比如：@研究员 找资料，然后 @撰稿 写成草稿。';
+    $('#log').append(e);
+  }
+  setBusy(detail.busy);
+  toBottom();
+}
+
+$('#newgroupbtn').onclick = () => {
+  const box = $('#gmembers');
+  box.innerHTML = '';
+  $('#grouperr').hidden = true;
+  if (bots.length < 2) {
+    box.innerHTML = '<p class="note" style="margin:0">先建至少两个 Bot。</p>';
+  }
+  for (const b of bots) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chipbtn';
+    chip.setAttribute('aria-pressed', 'false');
+    chip.textContent = b.name;
+    chip.dataset.id = b.id;
+    chip.onclick = () => {
+      const on = chip.getAttribute('aria-pressed') === 'true';
+      const picked = box.querySelectorAll('[aria-pressed="true"]').length;
+      if (!on && picked >= 6) return;
+      chip.setAttribute('aria-pressed', String(!on));
+    };
+    box.append(chip);
+  }
+  $('#groupdlg').showModal();
+};
+
+$('#groupform').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $('#gname').value.trim();
+  const members = [...$('#gmembers').querySelectorAll('[aria-pressed="true"]')].map((c) => c.dataset.id);
+  const err = $('#grouperr');
+  err.hidden = true;
+  if (members.length < 2 || members.length > 6) {
+    err.textContent = '选 2 到 6 个 Bot。';
+    err.hidden = false;
+    return;
+  }
+  try {
+    const group = await api('/api/groups', {
+      method: 'POST', body: JSON.stringify({ name, members }),
+    });
+    $('#gname').value = '';
+    $('#groupdlg').close();
+    groups.push({ ...group, memberNames: members.map((id) => bots.find((b) => b.id === id)?.name) });
+    selectGroup(group);
+    drawer(false);
+  } catch (e2) {
+    err.textContent = `创建失败：${e2.message}`;
+    err.hidden = false;
+  }
+};
+
+/* ---------- routines ---------- */
+
+/** The one-line note in the conversation when routines are scheduled. */
+function routineNote(count) {
+  const el = document.createElement('div');
+  el.className = 'routinenote';
+  el.textContent = `已创建 ⏱ ${count} 个例行任务`;
+  stream().append(el);
+  toBottom();
+}
+
+async function renderRoutines() {
+  const box = $('#routinelist');
+  if (!current || current.kind === 'group') return;
+  box.textContent = '读取中…';
+
+  let list;
+  try {
+    list = await api(`/api/bots/${current.id}/routines`);
+  } catch (e) {
+    box.textContent = `读取失败：${e.message}`;
+    return;
+  }
+
+  box.innerHTML = '';
+  if (!list.length) {
+    const p2 = document.createElement('p');
+    p2.className = 'note';
+    p2.style.margin = '0';
+    p2.textContent = '还没有。跟它说「把这件事排成每天的固定日程」就会建一个。';
+    box.append(p2);
+    return;
+  }
+
+  for (const r of list) {
+    const row = document.createElement('div');
+    row.className = 'routine';
+
+    const meta = document.createElement('div');
+    meta.className = 'rmeta';
+    const t = document.createElement('div');
+    t.className = 'rt';
+    t.textContent = r.title;
+    const w = document.createElement('div');
+    w.className = 'rw';
+    w.textContent = r.when + (r.lastRunAt
+      ? ` · 上次 ${new Date(r.lastRunAt).toLocaleString('zh-CN', { hour12: false })}`
+      : '');
+    meta.append(t, w);
+
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'sw';
+    sw.setAttribute('role', 'switch');
+    sw.setAttribute('aria-checked', String(r.enabled));
+    sw.setAttribute('aria-label', r.title);
+    sw.onclick = async () => {
+      const next = sw.getAttribute('aria-checked') !== 'true';
+      sw.setAttribute('aria-checked', String(next)); // optimistic: it is a toggle
+      try {
+        await api(`/api/routines/${r.id}`, {
+          method: 'PATCH', body: JSON.stringify({ enabled: next }),
+        });
+      } catch (e) {
+        sw.setAttribute('aria-checked', String(!next));
+        showBanner(`改不动：${e.message}`);
+      }
+    };
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'rdel';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', `删除 ${r.title}`);
+    del.onclick = async () => {
+      if (!confirm(`删除例行任务「${r.title}」？`)) return;
+      try {
+        await api(`/api/routines/${r.id}`, { method: 'DELETE' });
+        renderRoutines();
+      } catch (e) {
+        showBanner(`删除失败：${e.message}`);
+      }
+    };
+
+    row.append(meta, sw, del);
+    box.append(row);
+  }
+}
+
+/* ---------- phone drawer ---------- */
+const drawer = (open) => document.body.setAttribute('data-drawer', open ? 'open' : 'closed');
+$('#menubtn').onclick = () => drawer(document.body.dataset.drawer !== 'open');
+$('#scrim').onclick = () => drawer(false);
+
+$('#whereBtn').onclick = async () => {
+  if (!current) return;
+  fillTargets($('#switchtarget'), current.sandboxTarget);
+  const name = current.sandboxTarget ?? targets.default;
+  const t = targets.targets.find((x) => x.name === name);
+  $('#whereinfo').textContent = t ? `${t.description} · 出网：${t.egress}` : '';
+  $('#wheredlg').showModal();
+
+  if (t && t.kind !== 'local') {
+    try {
+      const p = await api(`/api/targets/${encodeURIComponent(t.name)}/probe`);
+      $('#whereinfo').textContent = p.ok
+        ? `${t.description} · 出网：${t.egress} · ${p.detail}`
+        : `${t.description} · 连不上：${p.detail}`;
+    } catch { /* advisory only */ }
+  }
+};
+
+$('#switchtarget').onchange = async (e) => {
+  if (!current) return;
+  const next = e.target.value || null;
+  const r = await api(`/api/bots/${current.id}/target`, {
+    method: 'PATCH', body: JSON.stringify({ target: next }),
+  });
+  current = r.bot;
+  const i = bots.findIndex((b) => b.id === current.id);
+  if (i >= 0) bots[i] = { ...bots[i], ...current };
+  $('#whereBtn').textContent = targetLabel(current);
+  $('#wheredlg').close();
+};
+
+/* ---------- live events ---------- */
+// A browser cannot set headers on a WebSocket, so the token goes in the query.
+const ws = new WebSocket(
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${encodeURIComponent(TOKEN)}`,
+);
+ws.onmessage = (ev) => {
+  const e = JSON.parse(ev.data);
+
+  // Group events: a shared stream, so every line arrives this way including the
+  // person's own.
+  if (e.type === 'routines.changed') {
+    if (current?.id === e.botId) {
+      routineNote(e.routines.length);
+      if ($('#setdlg').open) void renderRoutines();
+    }
+    return;
+  }
+  if (e.type === 'routine.fired') {
+    // A routine starting is worth seeing even from another conversation.
+    const bot = bots.find((b) => b.id === e.botId);
+    if (bot) setAvatarState(bot.id, 'working');
+    if (current?.id === e.botId) noteActivity(`例行任务：${e.title}`);
+    return;
+  }
+  if (e.type === 'question.asked') {
+    if (current && current.id === e.botId) {
+      setBusy(false); // it is waiting on the person now, not working
+      choiceCard(e.question, e.options);
+    }
+    return;
+  }
+  if (e.type === 'group.message') {
+    if (current?.kind === 'group' && e.message.groupId === current.id) {
+      $('#log').querySelector('.empty')?.remove();
+      groupLine(e.message, e.authorName);
+    }
+    return;
+  }
+  if (e.type === 'group.thinking') {
+    if (current?.kind === 'group' && e.groupId === current.id) {
+      setBusy(true);
+      // Only the member whose turn it is should move.
+      for (const el of document.querySelectorAll('.botface')) el.dataset.state = 'idle';
+      if (e.botId) setAvatarState(e.botId, 'working');
+    }
+    return;
+  }
+  if (e.type === 'group.created') {
+    void refreshRoster();
+    return;
+  }
+
+  // The id is on the event, not inside the step. Reading it from the step left
+  // every comparison false and the conversation blank after the first message.
+  const eventBot = e.botId ?? e.step?.botId ?? null;
+
+  if (e.type === 'step.appended' && eventBot && eventBot === current?.id) {
+    // The user's own message is already on screen, echoed when it was sent.
+    if (e.step.kind === 'user_message') return;
+    renderStep(e.step);
+    toBottom();
+  } else if (e.type === 'approval.requested' && e.approval.botId === current?.id) {
+    setBusy(false);
+    askCard(e.approval);
+  } else if (e.type === 'run.updated' && e.run.botId === current?.id) {
+    if (e.run.status !== 'running') setBusy(false);
+    if (e.run.status === 'failed' && e.run.error) bubble('bot', `出错了：${e.run.error}`);
+  } else if (e.type === 'approval.requested' || e.type === 'step.appended') {
+    // Activity on another bot: refresh the roster so its preview and dot update.
+    void refreshRoster();
+  } else if (e.type === 'run.updated') {
+    // A bot can be working while another conversation is on screen — a handoff,
+    // or a group turn. Its face moves in the roster either way.
+    const bot = bots.find((b) => b.id === e.run.botId);
+    if (bot) setAvatarState(bot.id, e.run.status === 'running' ? 'working' : 'idle');
+  }
+};
+
+async function refreshRoster() {
+  const [fresh, freshGroups] = await Promise.all([api('/api/bots'), api('/api/groups')]);
+  bots = fresh;
+  groups = freshGroups;
+  if (current) {
+    const c = fresh.find((b) => b.id === current.id);
+    if (c) current = { ...current, ...c };
+  }
+  renderRoster();
+}
+
+/* ---------- boot ---------- */
+targets = await api('/api/targets');
+[bots, groups] = await Promise.all([api('/api/bots'), api('/api/groups')]);
+renderRoster();
+if (bots[0]) selectBot(bots[0]);
+else {
+  const e = document.createElement('div');
+  e.className = 'empty';
+  e.textContent = '左上角 + 新建一个 Bot。给它名字、职责，和它必须停下来问你的边界。';
+  $('#log').append(e);
+}
+</script>
+</body>
+</html>
