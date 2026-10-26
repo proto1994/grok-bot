@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime exceptions the orchestrator needs.
+
+    These are the minimum for a notarised build: the app spawns a Node process
+    for the orchestrator, which in turn spawns shell commands and the docker
+    CLI. None of this is possible under App Sandbox, which is why there is no
+    app-sandbox entitlement here and why the Mac App Store is not a route.
+  -->
+
+  <!-- The orchestrator runs as a child process using Electron's own binary. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Spawning the docker CLI and shell commands from the bundle. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- Reaching the model gateway and the sandbox's own network. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- The orchestrator listens on 127.0.0.1 for the window to connect to. -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>
