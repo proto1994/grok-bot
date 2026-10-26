@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "fs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data/workspaces"],
+      "readOnlyTools": ["read_file", "read_text_file", "list_directory", "directory_tree", "search_files", "get_file_info"]
+    },
+    "internal-tickets": {
+      "command": "node",
+      "args": ["../our-mcp-servers/tickets/index.js"],
+      "env": { "TICKETS_API_BASE": "https://tickets.internal" },
+      "readOnlyTools": ["search_tickets", "get_ticket"],
+      "disabled": true
+    }
+  }
+}

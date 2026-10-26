@@ -1,0 +1,36 @@
+{
+  "default": "local-docker",
+  "targets": {
+    "local-docker": {
+      "kind": "docker",
+      "description": "docker on this machine",
+      "egress": {
+        "mode": "defaults_plus_allowlist",
+        "allowed": ["internal.corp"],
+        "applyToMcp": true
+      }
+    },
+
+    "remote-ssh": {
+      "kind": "docker",
+      "dockerHost": "ssh://ops@sandbox-1.internal",
+      "description": "shared sandbox host, reached over ssh",
+      "egress": {
+        "mode": "allowlist_only",
+        "allowed": ["internal.corp", "registry.npmjs.org"],
+        "applyToMcp": true
+      }
+    },
+
+    "remote-context": {
+      "kind": "docker",
+      "dockerContext": "prod-sandboxes",
+      "description": "an existing docker context, e.g. one pointing at a cloud host"
+    },
+
+    "unsafe-host": {
+      "kind": "local",
+      "description": "runs on the orchestrator host with NO isolation; development only"
+    }
+  }
+}

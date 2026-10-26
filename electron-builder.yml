@@ -1,0 +1,54 @@
+appId: dev.local.grokbotlite
+productName: Bots
+copyright: ""
+
+directories:
+  output: release
+  buildResources: desktop/resources
+
+# Only what the app actually runs. The orchestrator is the compiled output in
+# dist; src/ ships nowhere, and the test scripts stay out of the bundle.
+files:
+  - desktop/main.cjs
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+
+# node_modules is resolved by electron-builder from `dependencies`. The pi SDK
+# is large but required at runtime; ws is the websocket server.
+asar: true
+# The egress proxy's sources are copied into a container with `docker cp`, which
+# cannot read from inside an asar archive.
+asarUnpack:
+  - dist/sandbox/*.ts
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64]
+  # The orchestrator spawns processes and talks to the docker daemon, neither of
+  # which works under App Sandbox. That is also why this cannot ship on the Mac
+  # App Store, and why distribution is a signed DMG instead.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: desktop/resources/entitlements.mac.plist
+  entitlementsInherit: desktop/resources/entitlements.mac.plist
+  extendInfo:
+    NSHighResolutionCapable: true
+    LSUIElement: false
+
+dmg:
+  title: "${productName}"
+  contents:
+    - x: 140
+      y: 180
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications
+
+# Signing and notarisation need an Apple Developer ID, which is not present
+# here. Without one the build still produces a working .app and .dmg; macOS
+# will warn on first open until it is signed and notarised. See docs below.
+afterSign: null
