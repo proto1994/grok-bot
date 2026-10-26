@@ -23,11 +23,13 @@ export function scheduleTool(ctx: ToolContext, onChange: () => void): Tool {
     schema: {
       name: 'schedule_routine',
       description:
-        'Put a recurring job on your own schedule. Use it when the user asks for ' +
-        'something to happen regularly rather than once — a daily report, a ' +
-        'twice-a-day check. The prompt you give is what you will be handed when ' +
-        'it fires, with none of the current conversation, so write it to stand ' +
-        'alone. One routine per job; say what you scheduled in your reply.',
+        'Put a recurring job on your own schedule — either because the user ' +
+        'asked for something regular, or because your job implies it and nobody ' +
+        'should have to ask. Check list_routines first and do not duplicate one. ' +
+        'The prompt you give is what you will be handed when it fires, with none ' +
+        'of the current conversation, so write it to stand alone and say what ' +
+        'finished looks like. One routine per job; say what you scheduled, and ' +
+        'why, in your reply.',
       input_schema: {
         type: 'object',
         properties: {
