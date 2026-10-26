@@ -111,11 +111,10 @@
   body[data-desktop="1"] .sidetop { -webkit-app-region:drag; padding-top:30px; }
   body[data-desktop="1"] .sidetop button { -webkit-app-region:no-drag; }
   .namepill {
-    display:inline-flex; align-items:center; gap:9px;
+    display:inline-flex; align-items:center;
     background:var(--bg); border:1px solid var(--line); border-radius:999px;
-    padding:6px 16px 6px 7px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+    padding:6px 16px; box-shadow:0 1px 3px rgba(0,0,0,.05);
   }
-  .namepill .avatar { width:26px; height:26px; border-radius:50%; font-size:11px; }
   .namepill .t { font-weight:600; font-size:14px; }
   .topright { position:absolute; right:14px; top:14px; display:flex; align-items:center; gap:8px; }
   .ghost {
@@ -482,8 +481,9 @@
   </div>
   <div class="topbar">
     <button class="menubtn" id="menubtn" aria-label="Bot 列表">☰</button>
+    <!-- The name only. The face is in the roster and in the status row; a
+         third copy here was redundant and overhung the pill's own edge. -->
     <div class="namepill" id="namepill" hidden>
-      <span class="avatar" id="topavatar"></span>
       <span class="t" id="topname"></span>
     </div>
     <div class="topright">
@@ -714,10 +714,6 @@ function setAvatarState(botId, state) {
   if (state === 'working') working.add(botId);
   else working.delete(botId);
   for (const host of document.querySelectorAll(`[data-avatar-for="${botId}"]`)) {
-    // The name pill is a label, not an indicator. Animating it alongside the
-    // roster row and the status row made one bot working look like three
-    // things happening.
-    if (host.closest('.namepill')) continue;
     for (const el of host.querySelectorAll('.botface')) el.dataset.state = state;
   }
 }
@@ -976,8 +972,25 @@ function attachResult(step) {
  * no special handling for the reply.
  */
 function choiceCard(question, options) {
+  /*
+   * One card per question, however many times we are told about it.
+   *
+   * Two paths draw a card: the live question.asked event, and the ask_choice
+   * note replayed from history. Selecting a bot clears the log and then awaits
+   * several requests, so a question arriving during those awaits got painted
+   * live and then painted again by the replay — the same card twice, with the
+   * activity line between them. Greeting a new bot hit it every time.
+   */
+  const identity = JSON.stringify([question, options]);
+  // Only against the most recent card: a duplicate is always adjacent, whereas
+  // the same question asked again later in the conversation is a real question
+  // and has to be drawn.
+  const cards = document.querySelectorAll('#log .choices');
+  if (cards[cards.length - 1]?.dataset.identity === identity) return;
+
   const card = document.createElement('div');
   card.className = 'choices';
+  card.dataset.identity = identity;
 
   const q = document.createElement('div');
   q.className = 'q';
@@ -1142,8 +1155,6 @@ async function selectBot(b) {
   renderRoster();
 
   $('#namepill').hidden = false;
-  $('#topavatar').dataset.avatarFor = b.id;
-  paintAvatar($('#topavatar'), b, false, 'idle');
   paintTopBar();
   $('#text').placeholder = `给 ${b.name} 发消息…`;
   $('#hint').textContent = b.job;
@@ -1545,7 +1556,6 @@ async function selectGroup(g) {
   renderRoster();
 
   $('#namepill').hidden = false;
-  groupAvatar($('#topavatar'), g);
   $('#topname').textContent = g.name;
   // A group has no single sandbox or permission mode; those live on its members.
   $('#whereBtn').hidden = true;

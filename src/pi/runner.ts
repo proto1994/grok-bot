@@ -287,7 +287,16 @@ async function build(bot: Bot): Promise<BotSession> {
   const { session } = await createAgentSession({
     cwd: workdir,
     model,
-    thinkingLevel: 'off',
+    /*
+     * 'low', not 'off'.
+     *
+     * With thinking off the model had nowhere to reason, so it reasoned in the
+     * reply — a line of English above the answer ("I should keep my response
+     * short…"). Paired with reasoning: true on the model, that stops. 'low'
+     * rather than higher because the point is to give the reasoning a home,
+     * not to buy more of it on every turn.
+     */
+    thinkingLevel: 'low',
     modelRuntime,
     resourceLoader: loader,
     // Replace the built-ins (which would run in this process) with the
