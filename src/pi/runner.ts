@@ -114,6 +114,13 @@ async function build(bot: Bot): Promise<BotSession> {
   /** Milliseconds this turn spent waiting for a person, which do not count. */
   let parkedMs = 0;
   const instanceId = randomUUID();
+  /**
+   * Whether this turn has already put a question on screen.
+   *
+   * A card is the question, so anything the model writes after one is a second
+   * copy of it. Reset at the start of every turn.
+   */
+  let asked = false;
 
   const step = (kind: Parameters<typeof store.appendStep>[1], body: string, tool: string | null = null) => {
     if (!currentRun) return;
@@ -151,6 +158,14 @@ async function build(bot: Bot): Promise<BotSession> {
       `You are ${bot.name}, a persistent teammate.`,
       ``,
       `Your job: ${bot.job}`,
+      ``,
+      `Write only what you mean the user to read, in their language. Working out`,
+      `what to do, deciding which tool to reach for, reminding yourself to keep`,
+      `it short — none of that belongs in a reply. It shows up on screen as a`,
+      `stray line of English above the actual answer.`,
+      ``,
+      `After ask_choice, say nothing. The buttons are the question; repeating it`,
+      `underneath gives the user the same question twice.`,
       ``,
       `You work on a sandbox computer. Your working directory is ${workdir} and`,
       `durable files belong there. Paths you are given are relative to it, and`,
@@ -232,6 +247,7 @@ async function build(bot: Bot): Promise<BotSession> {
    * tap is useful whether or not other bots exist.
    */
   const choiceTool = toPiTool('ask_choice', askTool(toolCtx, (q) => {
+    asked = true;
     emit({ type: 'question.asked', botId: bot.id, question: q.question, options: q.options });
   }), toolCtx);
 
@@ -307,6 +323,19 @@ async function build(bot: Bot): Promise<BotSession> {
     if (event.type === 'message_end' && event.message?.role === 'assistant') {
       for (const b of event.message.content ?? []) {
         if (b.type === 'text' && String(b.text ?? '').trim()) {
+          /*
+           * Nothing follows a card.
+           *
+           * ask_choice already put the question on screen as buttons, and no
+           * tool can end a turn, so the model carries on and writes the same
+           * question out again underneath — in the case this was found from,
+           * re-listing both options it had just offered as taps. The prompt
+           * asks it not to; this makes it so regardless.
+           */
+          if (asked) {
+            step('note', `withheld after a question card: ${String(b.text).slice(0, 500)}`);
+            continue;
+          }
           step('assistant_text', b.text);
           // Kept so a bot that asked this one something gets the answer rather
           // than having to read the step log.
@@ -335,6 +364,7 @@ async function build(bot: Bot): Promise<BotSession> {
       // A direct message from a person starts a fresh chain at this bot.
       chain = incoming ?? { path: [bot.id] };
       lastReply = '';
+      asked = false;
       try {
         // followUp rather than a refusal: a message sent while the bot is still
         // working is nearly always a correction or an addition, and queueing it

@@ -43,7 +43,9 @@ export function askTool(ctx: ToolContext, onAsk: (q: PendingQuestion) => void): 
         'plausible answers are few — what to work on first, which of two ' +
         'approaches, which file. Do not use it for anything you can decide ' +
         'yourself, and do not use it to confirm an action: a tool that needs ' +
-        'approval already asks. After calling it, stop and wait; the answer ' +
+        'approval already asks. Say what you need to say before calling it, not ' +
+        'after: the buttons are the question, and anything you write underneath ' +
+        'is the same question a second time. Then stop and wait; the answer ' +
         'arrives as the next message.',
       input_schema: {
         type: 'object',
@@ -83,7 +85,8 @@ export function askTool(ctx: ToolContext, onAsk: (q: PendingQuestion) => void): 
 
       return (
         `Asked the user: "${question}" with ${trimmed.length} options. ` +
-        'Stop here and wait — their answer comes as the next message.'
+        'The buttons are on screen. End your turn here without writing anything ' +
+        'further — text after this point is withheld, not shown.'
       );
     },
   };
