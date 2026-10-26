@@ -1117,6 +1117,10 @@ function renderStep(s) {
       choiceCard(q.question, q.options);
     } catch { /* a malformed note is not worth surfacing */ }
   }
+  else if (s.kind === 'note' && s.body.startsWith('withheld after a question card:')) {
+    // Recorded for diagnosis, deliberately not shown: it is the question the
+    // card above is already asking.
+  }
   else if (s.kind === 'note') {
     const el = document.createElement('div');
     el.className = 'activity';

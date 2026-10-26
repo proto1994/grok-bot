@@ -41,8 +41,16 @@ await check('a question with options is recorded and announced', async () => {
     { question: '先做哪方面？', options: ['查资料', '写代码', '随便试试'] }, ctx,
   );
   assert.match(out, /Asked the user/);
-  // The model has to stop here, or it answers its own question.
-  assert.match(out, /Stop here and wait/);
+  /*
+   * The result has to tell the model to end the turn, and to say that text
+   * after this point is withheld rather than shown.
+   *
+   * No tool can end a turn in pi, so a model that keeps talking writes the
+   * same question out underneath the buttons. The runner drops that text; the
+   * model is told so here, which is what stops it being written at all.
+   */
+  assert.match(out, /End your turn here/);
+  assert.match(out, /withheld/);
   assert.ok(seen, 'the ui was not told');
   assert.equal(seen!.options.length, 3);
 });
