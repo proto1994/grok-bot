@@ -3,12 +3,16 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { GROUP_MAX, GROUP_MIN, PERMISSION_MODES, type PermissionMode } from '../protocol.ts';
+import { GROUP_MAX, GROUP_MIN, PERMISSION_MODES, type Bot, type PermissionMode } from '../protocol.ts';
 import { store } from '../agent/store.ts';
 import { TOOLS } from '../agent/tools.ts';
 import { riskOf } from '../pi/gate.ts';
 import { describe as describeRoutine } from '../agent/routines.ts';
-import { dropSession, PEER_TOOLS, PI_TOOLS, PI_TOOL_DESCRIPTIONS } from '../pi/runner.ts';
+import { dropSession, invalidateSessions, PEER_TOOLS, PI_TOOLS, PI_TOOL_DESCRIPTIONS } from '../pi/runner.ts';
+import { describeModels, forgetProviderSecret, redactSecrets } from '../pi/gateway.ts';
+import {
+  parseProviderBody, PRESETS, ProviderInputError, testConnection, toPublic,
+} from '../pi/providers.ts';
 import { startScheduler } from './scheduler.ts';
 import { forgetSession } from '../pi/sessions.ts';
 import { loadMcpServers, stopMcpServers } from '../mcp/registry.ts';
@@ -31,6 +35,26 @@ const HOST = process.env.BIND === 'lan' ? '0.0.0.0' : (process.env.HOST ?? '127.
 /** Stage 0 is single-user. Identity is a placeholder, not authentication. */
 const OWNER = process.env.OWNER_ID ?? 'local';
 
+/**
+ * Points a bot at a configured model, or back at the account default.
+ * Both null means the default. A half-set pair is a client bug.
+ */
+function assignBotModel(
+  botId: string, providerId: unknown, modelId: unknown,
+): { bot: Bot } | { error: string; status: number } {
+  if (providerId == null && modelId == null) {
+    return { bot: store.setBotModel(botId, null, null)! };
+  }
+  if (typeof providerId !== 'string' || typeof modelId !== 'string' || !providerId || !modelId) {
+    return { error: '选模型时要同时给出提供商和模型，留空则用默认', status: 400 as const };
+  }
+  const p = store.getProvider(providerId);
+  if (!p || !p.models.some((m) => m.modelId === modelId)) {
+    return { error: '没有这个模型', status: 400 as const };
+  }
+  return { bot: store.setBotModel(botId, providerId, modelId)! };
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI = path.join(here, '../web/index.html');
 
@@ -41,6 +65,10 @@ const emit = (e: unknown) => {
     if (ws.readyState === ws.OPEN) ws.send(msg);
   }
 };
+
+function logErr(prefix: string, e: unknown) {
+  console.error(prefix, redactSecrets(e instanceof Error ? e.message : String(e)));
+}
 
 function json(res: import('node:http').ServerResponse, code: number, body: unknown) {
   const s = JSON.stringify(body);
@@ -132,12 +160,22 @@ const server = createServer(async (req, res) => {
       if (!PERMISSION_MODES.includes(mode)) {
         return json(res, 400, { error: `permissionMode must be one of ${PERMISSION_MODES.join(', ')}` });
       }
+      if (b.providerId != null || b.modelId != null) {
+        const probe = store.getProvider(String(b.providerId ?? ''));
+        if (!probe || !probe.models.some((m) => m.modelId === String(b.modelId ?? ''))) {
+          return json(res, 400, { error: '没有这个模型' });
+        }
+      }
       const bot = store.createBot(OWNER, name, job, target, mode, {
         shape: b.shape == null ? null : String(b.shape),
         color: b.color == null ? null : String(b.color),
       });
-      emit({ type: 'bot.created', bot });
-      return json(res, 201, bot);
+      if (b.providerId != null || b.modelId != null) {
+        store.setBotModel(bot.id, String(b.providerId), String(b.modelId));
+      }
+      const created = store.getBot(bot.id)!;
+      emit({ type: 'bot.created', bot: created });
+      return json(res, 201, created);
     }
 
     // The page imports this as a module, so it has to be served alongside it.
@@ -184,6 +222,115 @@ const server = createServer(async (req, res) => {
       if (!t) return json(res, 404, { error: `unknown target: ${seg[2]}` });
       if (t.kind === 'local') return json(res, 200, { ok: true, detail: 'this host' });
       return json(res, 200, await probeTarget(t));
+    }
+
+    // GET /api/providers — configured accounts, keys masked, plus the presets
+    if (req.method === 'GET' && url.pathname === '/api/providers') {
+      return json(res, 200, {
+        providers: store.listProviders().map(toPublic),
+        defaultModel: store.getDefaultModel(),
+        presets: PRESETS,
+      });
+    }
+
+    // POST /api/providers/test — probe the values in the form, saved or not
+    if (req.method === 'POST' && url.pathname === '/api/providers/test') {
+      const b = await readBody(req);
+      const existing = typeof b.id === 'string' ? store.getProvider(b.id) : undefined;
+      let parsed;
+      try {
+        parsed = parseProviderBody(b, existing?.apiKey);
+      } catch (e) {
+        if (e instanceof ProviderInputError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+      const apiKey = parsed.apiKey !== undefined ? parsed.apiKey : (existing?.apiKey ?? '');
+      const modelId = parsed.models[0]?.modelId;
+      if (!modelId) return json(res, 400, { error: '至少要有一个模型' });
+      const result = await testConnection({
+        apiStyle: parsed.apiStyle, baseUrl: parsed.baseUrl, apiKey,
+        modelId: String(b.modelId ?? modelId), preset: parsed.preset,
+      });
+      return json(res, 200, result);
+    }
+
+    // POST /api/providers
+    if (req.method === 'POST' && url.pathname === '/api/providers') {
+      const b = await readBody(req);
+      let parsed;
+      try {
+        parsed = parseProviderBody(b);
+      } catch (e) {
+        if (e instanceof ProviderInputError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+      if (parsed.apiKey === undefined) parsed.apiKey = '';
+      const created = store.createProvider({ ...parsed, apiKey: parsed.apiKey });
+      if (!store.getDefaultModel()) store.setDefaultModel(created.id, created.models[0]!.modelId);
+      invalidateSessions();
+      return json(res, 201, { provider: toPublic(created), defaultModel: store.getDefaultModel() });
+    }
+
+    // PATCH /api/providers/:id
+    if (req.method === 'PATCH' && seg[0] === 'api' && seg[1] === 'providers' && seg[2] && !seg[3]) {
+      const existing = store.getProvider(seg[2]);
+      if (!existing) return json(res, 404, { error: 'no such provider' });
+      const b = await readBody(req);
+      let parsed;
+      try {
+        parsed = parseProviderBody(b, existing.apiKey);
+      } catch (e) {
+        if (e instanceof ProviderInputError) return json(res, 400, { error: e.message });
+        throw e;
+      }
+      const apiKey = parsed.apiKey !== undefined ? parsed.apiKey : existing.apiKey;
+      const updated = store.updateProvider(existing.id, { ...parsed, apiKey })!;
+      store.releaseBotsFromMissingModels(updated.id, updated.models.map((m) => m.modelId));
+      const d = store.getDefaultModel();
+      if (d?.providerId === updated.id && !updated.models.some((m) => m.modelId === d.modelId)) {
+        store.setDefaultModel(updated.id, updated.models[0]!.modelId);
+      }
+      invalidateSessions();
+      return json(res, 200, { provider: toPublic(updated), defaultModel: store.getDefaultModel() });
+    }
+
+    // DELETE /api/providers/:id
+    if (req.method === 'DELETE' && seg[0] === 'api' && seg[1] === 'providers' && seg[2] && !seg[3]) {
+      const existing = store.getProvider(seg[2]);
+      if (!existing) return json(res, 404, { error: 'no such provider' });
+      store.deleteProvider(existing.id);
+      forgetProviderSecret(existing.id);
+      invalidateSessions();
+      return json(res, 200, {
+        ok: true,
+        providers: store.listProviders().map(toPublic),
+        defaultModel: store.getDefaultModel(),
+      });
+    }
+
+    // PUT /api/settings/model  { providerId, modelId }
+    if (req.method === 'PUT' && url.pathname === '/api/settings/model') {
+      const b = await readBody(req);
+      const providerId = String(b.providerId ?? '');
+      const modelId = String(b.modelId ?? '');
+      const p = store.getProvider(providerId);
+      if (!p || !p.models.some((m) => m.modelId === modelId)) {
+        return json(res, 400, { error: 'no such model' });
+      }
+      store.setDefaultModel(providerId, modelId);
+      invalidateSessions();
+      return json(res, 200, { defaultModel: store.getDefaultModel() });
+    }
+
+    // PATCH /api/bots/:id/model  { providerId: string | null, modelId: string | null }
+    if (req.method === 'PATCH' && seg[0] === 'api' && seg[1] === 'bots' && seg[2] && seg[3] === 'model') {
+      const bot = store.getBot(seg[2]);
+      if (!bot || bot.ownerId !== OWNER) return json(res, 404, { error: 'no such bot' });
+      const b = await readBody(req);
+      const assigned = assignBotModel(bot.id, b.providerId ?? null, b.modelId ?? null);
+      if ('error' in assigned) return json(res, assigned.status, { error: assigned.error });
+      invalidateSessions(bot.id);
+      return json(res, 200, { bot: assigned.bot });
     }
 
     // PATCH /api/bots/:id  { name?, job?, shape?, color? }
@@ -313,7 +460,7 @@ const server = createServer(async (req, res) => {
       }
       // Returns immediately; the conversation plays out over the websocket.
       void sendToGroup(OWNER, group.id, text).catch((e) => {
-        console.error(`[group ${group.id}]`, e);
+        logErr(`[group ${group.id}]`, e);
       });
       return json(res, 202, { ok: true });
     }
@@ -411,7 +558,7 @@ const server = createServer(async (req, res) => {
           '给 4 到 5 个具体的方向，最后一项留个「只是先随便试试」这类出口。' +
           '不要说这是系统提示，像正常打招呼一样。',
         emit,
-      ).catch((e) => console.error(`[greet ${bot.id}]`, e));
+      ).catch((e) => logErr(`[greet ${bot.id}]`, e));
       return json(res, 202, { ok: true });
     }
 
@@ -429,7 +576,7 @@ const server = createServer(async (req, res) => {
        * which is the opposite of what adding to a running task should do.
        */
       void startRun(bot.id, text, emit).catch((e) => {
-        console.error(`[bot ${bot.id}]`, e);
+        logErr(`[bot ${bot.id}]`, e);
       });
       return json(res, 202, { queued: true, busy: isBusy(bot.id) });
     }
@@ -455,7 +602,8 @@ const server = createServer(async (req, res) => {
 
     json(res, 404, { error: 'not found' });
   } catch (e) {
-    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    const msg = redactSecrets(e instanceof Error ? e.message : String(e));
+    json(res, 500, { error: msg });
   }
 });
 
@@ -567,6 +715,7 @@ server.listen(PORT, HOST, () => {
         'The token is the only thing protecting it.',
     );
   }
+  console.log(`models        ${describeModels()}`);
   const n = reconcileOnBoot(emit);
   if (n) console.log(`ended ${n} run(s) left in flight by the previous process`);
 

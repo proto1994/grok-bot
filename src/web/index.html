@@ -99,6 +99,26 @@
   }
   .pill:hover { background:color-mix(in srgb, var(--fg) 5%, transparent); }
 
+  /* Providers, in the models sheet. */
+  .prow {
+    display:flex; gap:10px; align-items:flex-start; padding:12px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .prow .pm { flex:1; min-width:0; }
+  .prow .pn { font-weight:500; font-size:14px; }
+  .prow .pd { font-size:12px; color:var(--muted); margin-top:2px; overflow-wrap:anywhere; }
+  .prow .pacts { display:flex; flex-direction:column; gap:4px; flex:0 0 auto; }
+  .prow .pacts button { border:0; background:transparent; color:var(--muted); font-size:12px; text-align:right; padding:2px 0; }
+  .prow .pacts button:hover { color:var(--fg); }
+  .prow .pacts button.danger:hover { color:var(--warn); }
+  .mcard {
+    border:1px solid var(--line); border-radius:12px; padding:8px 10px 4px; margin-bottom:8px;
+  }
+  .mcard .row2 { display:flex; gap:8px; }
+  .mcard .row2 .field { flex:1; }
+  .checkline { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); margin:2px 0 8px; }
+  .checkline input { width:auto; }
+
   /* ---------- main ---------- */
   main { display:flex; flex-direction:column; min-width:0; min-height:0; }
   /* The desktop window has no title bar, so this strip is what you drag it by.
@@ -470,6 +490,7 @@
   </div>
   <div class="roster" id="roster" role="list"></div>
   <div class="sidefoot">
+    <button class="pill" id="modelsbtn">模型</button>
     <button class="pill" id="appsbtn">连接应用</button>
   </div>
 </aside>
@@ -543,6 +564,10 @@
             <option value="full">完全权限 — 什么都不问</option>
           </select>
         </div>
+        <div class="field">
+          <label for="bmodel">模型</label>
+          <select id="bmodel"></select>
+        </div>
       </details>
 
       <p class="err" id="newerr" role="alert" hidden></p>
@@ -601,6 +626,11 @@
     <p class="note" style="margin-top:0">沙箱位置 — 这个 Bot 的电脑在哪</p>
     <button class="pill" id="setWhere" style="width:100%"></button>
     <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
+    <p class="note" style="margin-top:0">模型 — 这个 Bot 调用哪一个</p>
+    <div class="field">
+      <select id="botmodel"></select>
+    </div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
     <p class="note" style="margin-top:0">例行任务 — 它会按时自己做的事</p>
     <div class="routinelist" id="routinelist"></div>
     <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
@@ -608,6 +638,66 @@
     <p class="note" id="delnote">
       对话记录和它记住的上下文都会删掉。沙箱里的文件和登录状态是这台机器上共用的，不会动。
     </p>
+  </div>
+</dialog>
+
+<dialog id="modelsdlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2>模型</h2>
+    <p class="note" style="margin-top:0">默认 — 没有单独指定的 Bot 用这个</p>
+    <div class="field">
+      <select id="defaultmodel"></select>
+    </div>
+    <div id="provlist"></div>
+    <button class="primary" type="button" id="addprov" style="margin-top:14px">添加提供商</button>
+    <p class="note">
+      Key 只留在这台机器上。这里显示的是打码后的样子，完整内容不会再返回，也不会写进日志。
+    </p>
+  </div>
+</dialog>
+
+<dialog id="provdlg">
+  <div class="sheet" style="position:relative">
+    <button class="x" data-close aria-label="关闭">✕</button>
+    <h2 id="provtitle">添加提供商</h2>
+    <form id="provform">
+      <div class="field">
+        <label for="provpreset">预设</label>
+        <select id="provpreset"></select>
+      </div>
+      <div class="field">
+        <label for="provname">名称</label>
+        <input id="provname" required maxlength="80" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="provstyle">接口</label>
+        <select id="provstyle">
+          <option value="openai-chat-completions">openai-chat-completions</option>
+          <option value="anthropic-messages">anthropic-messages</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="provurl">Base URL</label>
+        <input id="provurl" placeholder="https://api.deepseek.com" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label for="provkey">API Key</label>
+        <input id="provkey" type="password" autocomplete="new-password" spellcheck="false" />
+      </div>
+      <p class="note" id="provhint"></p>
+      <div class="field">
+        <label>模型</label>
+        <div id="provmodels"></div>
+        <button type="button" class="ghostbtn" id="addmodelbtn">添加模型</button>
+      </div>
+      <p class="err" id="proverr" role="alert" hidden></p>
+      <p class="note" id="provtest" hidden></p>
+      <div class="actions">
+        <button type="button" class="ghostbtn" id="provtestbtn">测试连接</button>
+        <button class="primary inline" type="submit" id="provsave">保存</button>
+      </div>
+    </form>
   </div>
 </dialog>
 
@@ -1297,7 +1387,7 @@ function buildPickers() {
   paintPreview();
 }
 
-$('#newbtn').onclick = () => {
+$('#newbtn').onclick = async () => {
   // A different shape each time, so a roster of bots does not end up identical.
   picked = derive(String(Date.now()));
   fillTargets($('#btarget'), '');
@@ -1306,6 +1396,10 @@ $('#newbtn').onclick = () => {
   $('#newerr').hidden = true;
   $('#bsubmit').disabled = true;
   buildPickers();
+  try {
+    await loadCatalog();
+    fillModelSelect($('#bmodel'), true, '');
+  } catch { /* the select stays empty; creating a bot does not require a model */ }
   $('#newdlg').showModal();
   $('#bname').focus();
 };
@@ -1332,6 +1426,7 @@ $('#newform').onsubmit = async (e) => {
       permissionMode: $('#bmode').value,
       shape: picked.shape,
       color: picked.color,
+      ...(parseModelValue($('#bmodel').value) ?? {}),
     }),
     });
     $('#bname').value = ''; $('#bjob').value = '';
@@ -1392,6 +1487,377 @@ $('#appsbtn').onclick = async () => {
     }
   } catch (e) {
     list.textContent = `读取失败：${e.message}`;
+  }
+};
+
+/* ---------- models ---------- */
+let catalog = { providers: [], defaultModel: null, presets: [] };
+let editingId = null;
+
+function modelValue(providerId, modelId) {
+  return `${providerId}\n${modelId}`;
+}
+function parseModelValue(v) {
+  const i = v.indexOf('\n');
+  if (i < 0) return null;
+  return { providerId: v.slice(0, i), modelId: v.slice(i + 1) };
+}
+function describeDefault() {
+  const d = catalog.defaultModel;
+  if (!d) return '';
+  const p = catalog.providers.find((x) => x.id === d.providerId);
+  if (!p) return '';
+  const m = p.models.find((x) => x.modelId === d.modelId);
+  return `${p.name} / ${m?.name || d.modelId}`;
+}
+
+async function loadCatalog() {
+  catalog = await api('/api/providers');
+}
+
+/** A select of every configured model. `blank` is the "use default" option. */
+function fillModelSelect(el, blank, selected) {
+  el.innerHTML = '';
+  if (blank) {
+    const o = document.createElement('option');
+    o.value = '';
+    const d = describeDefault();
+    o.textContent = d ? `使用默认（${d}）` : '使用默认';
+    el.append(o);
+  }
+  for (const p of catalog.providers) {
+    for (const m of p.models) {
+      const o = document.createElement('option');
+      o.value = modelValue(p.id, m.modelId);
+      o.textContent = `${p.name} / ${m.name || m.modelId}`;
+      el.append(o);
+    }
+  }
+  if (!blank && !el.options.length) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '还没有模型';
+    el.append(o);
+  }
+  el.value = selected || '';
+  if (el.value !== (selected || '')) el.value = '';
+}
+
+function renderProviders() {
+  fillModelSelect($('#defaultmodel'), false, catalog.defaultModel
+    ? modelValue(catalog.defaultModel.providerId, catalog.defaultModel.modelId) : '');
+  const list = $('#provlist');
+  list.innerHTML = '';
+  if (!catalog.providers.length) {
+    const empty = document.createElement('p');
+    empty.className = 'note';
+    empty.textContent = '还没有提供商。添加 DeepSeek、OpenAI、Anthropic，或任何一个兼容接口。';
+    list.append(empty);
+    return;
+  }
+  for (const p of catalog.providers) {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    const meta = document.createElement('div');
+    meta.className = 'pm';
+    const nm = document.createElement('div');
+    nm.className = 'pn';
+    nm.textContent = p.name;
+    const detail = document.createElement('div');
+    detail.className = 'pd';
+    const models = p.models.map((m) => m.modelId).join('、');
+    const key = p.hasKey ? p.apiKeyMask : '未设置 key';
+    detail.textContent = `${p.apiStyle} · ${p.baseUrl}\n${key} · ${models}`;
+    detail.style.whiteSpace = 'pre-line';
+    const status = document.createElement('div');
+    status.className = 'pd';
+    meta.append(nm, detail, status);
+
+    const acts = document.createElement('div');
+    acts.className = 'pacts';
+    const mk = (label, fn, danger) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (danger) b.className = 'danger';
+      b.onclick = fn;
+      return b;
+    };
+    acts.append(
+      mk('测试', async () => {
+        status.textContent = '测试中…';
+        try {
+          const r = await api('/api/providers/test', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: p.id, name: p.name, preset: p.preset, apiStyle: p.apiStyle,
+              baseUrl: p.baseUrl, models: p.models,
+            }),
+          });
+          status.textContent = r.detail;
+        } catch (e) {
+          status.textContent = e.message;
+        }
+      }),
+      mk('编辑', () => openProvider(p)),
+      mk('删除', async () => {
+        if (!confirm(`删除提供商「${p.name}」？\n\n用它的 Bot 会改回默认模型。`)) return;
+        try {
+          const r = await api(`/api/providers/${p.id}`, { method: 'DELETE' });
+          catalog.providers = r.providers;
+          catalog.defaultModel = r.defaultModel;
+          renderProviders();
+        } catch (e) {
+          showBanner(`删除失败：${e.message}`);
+        }
+      }, true),
+    );
+    row.append(meta, acts);
+    list.append(row);
+  }
+}
+
+$('#defaultmodel').onchange = async () => {
+  const sel = parseModelValue($('#defaultmodel').value);
+  if (!sel) return;
+  try {
+    const r = await api('/api/settings/model', {
+      method: 'PUT', body: JSON.stringify(sel),
+    });
+    catalog.defaultModel = r.defaultModel;
+  } catch (e) {
+    showBanner(`设置默认模型失败：${e.message}`);
+  }
+};
+
+$('#modelsbtn').onclick = async () => {
+  try {
+    await loadCatalog();
+  } catch (e) {
+    showBanner(`读取模型失败：${e.message}`);
+    return;
+  }
+  renderProviders();
+  $('#modelsdlg').showModal();
+};
+
+function blankModel() {
+  return { modelId: '', name: '', contextWindow: 128000, maxTokens: 8192, reasoning: false };
+}
+
+function readModelEditor() {
+  return [...$('#provmodels').querySelectorAll('.mcard')].map((card) => ({
+    modelId: card.querySelector('[data-f="modelId"]').value.trim(),
+    name: card.querySelector('[data-f="name"]').value.trim(),
+    contextWindow: Number(card.querySelector('[data-f="contextWindow"]').value),
+    maxTokens: Number(card.querySelector('[data-f="maxTokens"]').value),
+    reasoning: card.querySelector('[data-f="reasoning"]').checked,
+  }));
+}
+
+function renderModelEditor() {
+  const box = $('#provmodels');
+  const models = readModelEditor();
+  // First paint has nothing to read; the caller passes models via the form's dataset.
+  const source = box.childElementCount ? models : JSON.parse(box.dataset.models || '[]');
+  box.innerHTML = '';
+  for (const m of source) addModelCard(m);
+}
+
+function addModelCard(m) {
+  const card = document.createElement('div');
+  card.className = 'mcard';
+  const field = (label, f, value, kind) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const l = document.createElement('label');
+    l.textContent = label;
+    const input = document.createElement('input');
+    input.dataset.f = f;
+    if (kind === 'number') { input.type = 'number'; input.value = String(value); }
+    else { input.type = 'text'; input.value = value ?? ''; input.autocomplete = 'off'; input.spellcheck = false; }
+    wrap.append(l, input);
+    return wrap;
+  };
+  card.append(field('模型 id', 'modelId', m.modelId, 'text'));
+  card.append(field('显示名', 'name', m.name, 'text'));
+  const row = document.createElement('div');
+  row.className = 'row2';
+  row.append(
+    field('上下文', 'contextWindow', m.contextWindow, 'number'),
+    field('最大输出', 'maxTokens', m.maxTokens, 'number'),
+  );
+  card.append(row);
+  const line = document.createElement('label');
+  line.className = 'checkline';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.dataset.f = 'reasoning';
+  cb.checked = !!m.reasoning;
+  line.append(cb, document.createTextNode('支持推理（thinking）'));
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'rdel';
+  del.textContent = '删除';
+  del.onclick = () => {
+    if ($('#provmodels').children.length < 2) {
+      $('#proverr').hidden = false;
+      $('#proverr').textContent = '至少留一个模型';
+      return;
+    }
+    card.remove();
+  };
+  const foot = document.createElement('div');
+  foot.style.display = 'flex';
+  foot.style.justifyContent = 'space-between';
+  foot.style.alignItems = 'center';
+  foot.append(line, del);
+  card.append(foot);
+  $('#provmodels').append(card);
+}
+
+function fillPresetSelect(selected) {
+  const el = $('#provpreset');
+  el.innerHTML = '';
+  const presets = catalog.presets.slice();
+  if (selected && !presets.some((p) => p.id === selected)) {
+    presets.unshift({ id: selected, label: selected, apiStyle: 'anthropic-messages', baseUrl: '', models: [], hint: '' });
+  }
+  for (const p of presets) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.label;
+    el.append(o);
+  }
+  el.value = selected || 'deepseek';
+}
+
+function applyPreset(preset, overwriteName) {
+  if (overwriteName) {
+    $('#provname').value = preset.id === 'custom' ? '' : preset.label;
+  }
+  $('#provstyle').value = preset.apiStyle;
+  $('#provurl').value = preset.baseUrl || '';
+  $('#provhint').textContent = preset.hint || '';
+  $('#provmodels').innerHTML = '';
+  $('#provmodels').dataset.models = JSON.stringify(preset.models.length ? preset.models : [blankModel()]);
+  renderModelEditor();
+  delete $('#provmodels').dataset.models;
+}
+
+$('#provpreset').onchange = () => {
+  const preset = catalog.presets.find((p) => p.id === $('#provpreset').value);
+  if (preset) applyPreset(preset, true);
+};
+
+$('#addmodelbtn').onclick = () => addModelCard(blankModel());
+
+function openProvider(existing) {
+  $('#proverr').hidden = true;
+  $('#provtest').hidden = true;
+  editingId = existing?.id ?? null;
+  $('#provtitle').textContent = existing ? '编辑提供商' : '添加提供商';
+  $('#provkey').value = '';
+  $('#provkey').placeholder = existing?.hasKey
+    ? `留空则不修改，当前 ${existing.apiKeyMask}`
+    : '粘贴 API key';
+  fillPresetSelect(existing?.preset || 'deepseek');
+  if (existing) {
+    $('#provname').value = existing.name;
+    $('#provstyle').value = existing.apiStyle;
+    $('#provurl').value = existing.baseUrl;
+    const preset = catalog.presets.find((p) => p.id === existing.preset);
+    $('#provhint').textContent = preset?.hint || '';
+    $('#provmodels').innerHTML = '';
+    $('#provmodels').dataset.models = JSON.stringify(existing.models);
+    renderModelEditor();
+    delete $('#provmodels').dataset.models;
+  } else {
+    const preset = catalog.presets.find((p) => p.id === 'deepseek') || catalog.presets[0];
+    if (preset) applyPreset(preset, true);
+  }
+  $('#provdlg').showModal();
+}
+
+$('#addprov').onclick = () => openProvider(null);
+
+function formBody() {
+  const models = readModelEditor();
+  if (models.some((m) => !m.modelId)) {
+    throw new Error('每个模型都要有 id');
+  }
+  const body = {
+    name: $('#provname').value.trim(),
+    preset: $('#provpreset').value,
+    apiStyle: $('#provstyle').value,
+    baseUrl: $('#provurl').value.trim(),
+    models,
+  };
+  if (editingId) body.id = editingId;
+  const key = $('#provkey').value;
+  if (key || !editingId) body.apiKey = key;
+  return body;
+}
+
+$('#provtestbtn').onclick = async () => {
+  $('#proverr').hidden = true;
+  let body;
+  try { body = formBody(); } catch (e) {
+    $('#proverr').hidden = false;
+    $('#proverr').textContent = e.message;
+    return;
+  }
+  $('#provtest').hidden = false;
+  $('#provtest').textContent = '测试中…';
+  try {
+    const r = await api('/api/providers/test', { method: 'POST', body: JSON.stringify(body) });
+    $('#provtest').textContent = r.ok ? r.detail : r.detail;
+  } catch (e) {
+    $('#provtest').textContent = e.message;
+  }
+};
+
+$('#provform').onsubmit = async (e) => {
+  e.preventDefault();
+  $('#proverr').hidden = true;
+  let body;
+  try { body = formBody(); } catch (err) {
+    $('#proverr').hidden = false;
+    $('#proverr').textContent = err.message;
+    return;
+  }
+  const btn = $('#provsave');
+  btn.disabled = true;
+  try {
+    if (editingId) {
+      await api(`/api/providers/${editingId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/api/providers', { method: 'POST', body: JSON.stringify(body) });
+    }
+    $('#provdlg').close();
+    await loadCatalog();
+    renderProviders();
+  } catch (err) {
+    $('#proverr').hidden = false;
+    $('#proverr').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$('#botmodel').onchange = async () => {
+  if (!current || current.kind === 'group') return;
+  const sel = parseModelValue($('#botmodel').value);
+  const body = sel ? sel : { providerId: null, modelId: null };
+  try {
+    const r = await api(`/api/bots/${current.id}/model`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    });
+    current = { ...current, ...r.bot };
+    const i = bots.findIndex((b) => b.id === current.id);
+    if (i >= 0) bots[i] = { ...bots[i], ...r.bot };
+  } catch (e) {
+    showBanner(`换模型失败：${e.message}`);
   }
 };
 
@@ -1465,6 +1931,11 @@ $('#setBtn').onclick = () => {
   // The sandbox button is hidden on a phone, so surface it here too.
   $('#setWhere').textContent = targetLabel(current);
   void renderRoutines();
+  const selected = current.providerId && current.modelId
+    ? modelValue(current.providerId, current.modelId) : '';
+  loadCatalog()
+    .then(() => fillModelSelect($('#botmodel'), true, selected))
+    .catch((e) => showBanner(`读取模型失败：${e.message}`));
   $('#setdlg').showModal();
 };
 

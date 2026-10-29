@@ -1,5 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { store } from '../agent/store.ts';
+import {
+  applySecrets, clearSecret, modelsDocument, redact, type ProviderModel, type ProviderRecord,
+} from './providers.ts';
 
 /**
  * Model provider config for PI, in its models.json format.
@@ -18,14 +22,13 @@ export interface GatewayModel {
 }
 
 /**
- * Where the gateway lives. Required, with no default: the URL is deployment
- * detail, and a fallback baked in here would both leak an internal hostname
- * into the repo and silently point a misconfigured install at it.
+ * Models confirmed present on the internal gateway's /v1/models listing.
+ *
+ * There is no baked-in base URL. The address is deployment detail, and a
+ * fallback here would leak an internal hostname into the repo and silently
+ * point a misconfigured install at it. ADA_BASE_URL supplies it, once, when
+ * the store is still empty.
  */
-export const ADA_BASE_URL = process.env.ADA_BASE_URL ?? '';
-export const ADA_TOKEN_ENV = 'ADA_TOKEN';
-
-/** Models confirmed present on the gateway's /v1/models listing. */
 export const ADA_MODELS: GatewayModel[] = [
   /*
    * reasoning: true on all three, and it is not cosmetic.
@@ -68,42 +71,139 @@ export const ADA_MODELS: GatewayModel[] = [
   },
 ];
 
-export const DEFAULT_PROVIDER = 'ada';
-export const DEFAULT_MODEL = process.env.PI_MODEL ?? 'kr-claude-opus-5.5';
+const NO_MODEL =
+  '还没有默认模型。打开侧边栏的「模型」，添加一个提供商并设为默认；' +
+  '或者在 .env 里留下原来的 ADA_TOKEN 和 ADA_BASE_URL（或 ANTHROPIC_API_KEY），首次启动会导入。';
 
-export function gatewayConfig() {
-  return {
-    providers: {
-      [DEFAULT_PROVIDER]: {
-        baseUrl: ADA_BASE_URL,
-        api: 'anthropic-messages',
-        apiKey: `$${ADA_TOKEN_ENV}`,
-        models: ADA_MODELS.map((m) => ({
-          ...m,
-          reasoning: m.reasoning ?? false,
-          input: ['text'],
-        })),
-      },
-    },
-  };
+/**
+ * Imports the previous .env configuration the first time the store is empty.
+ *
+ * ADA_TOKEN wins when both are set, because that is the path a running install
+ * was actually calling. The Anthropic key is imported alongside it so it is
+ * not thrown away, but it does not become the default out from under the gateway.
+ */
+export function seedFromEnv(env: NodeJS.ProcessEnv = process.env): void {
+  if (store.countProviders() > 0) return;
+
+  let madeDefault = false;
+
+  if (env.ADA_TOKEN && env.ADA_BASE_URL) {
+    const models: ProviderModel[] = ADA_MODELS.map((m) => ({
+      modelId: m.id,
+      name: m.name,
+      contextWindow: m.contextWindow,
+      maxTokens: m.maxTokens,
+      reasoning: m.reasoning ?? false,
+    }));
+    const wanted = env.PI_MODEL?.trim();
+    if (wanted && !models.some((m) => m.modelId === wanted)) {
+      models.unshift({
+        modelId: wanted, name: wanted, contextWindow: 1_000_000, maxTokens: 32_000, reasoning: true,
+      });
+    }
+    const p = store.createProvider({
+      name: 'Gateway',
+      preset: 'ada',
+      apiStyle: 'anthropic-messages',
+      baseUrl: env.ADA_BASE_URL.replace(/\/+$/, ''),
+      apiKey: env.ADA_TOKEN,
+      models,
+    });
+    const modelId = wanted && p.models.some((m) => m.modelId === wanted)
+      ? wanted
+      : p.models[0]!.modelId;
+    store.setDefaultModel(p.id, modelId);
+    madeDefault = true;
+    // The name of the variable, never its value.
+    console.log('models        seeded a provider from ADA_TOKEN');
+  }
+
+  if (env.ANTHROPIC_API_KEY) {
+    const modelId = env.MODEL_ID?.trim() || 'claude-sonnet-5-5';
+    const p = store.createProvider({
+      name: 'Anthropic',
+      preset: 'anthropic',
+      apiStyle: 'anthropic-messages',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: env.ANTHROPIC_API_KEY,
+      models: [{
+        modelId, name: modelId, contextWindow: 200_000, maxTokens: 32_000, reasoning: true,
+      }],
+    });
+    if (!madeDefault) {
+      store.setDefaultModel(p.id, modelId);
+      console.log('models        seeded a provider from ANTHROPIC_API_KEY');
+    } else {
+      console.log('models        also imported ANTHROPIC_API_KEY');
+    }
+  }
 }
 
-/** Writes the config PI reads. Returns its path. */
-export function writeGatewayConfig(dir: string): string {
+/** Seeds from the environment when the store has nothing yet. */
+export function ensureProviders(): void {
+  seedFromEnv(process.env);
+}
+
+/**
+ * Writes the models.json PI reads and points each `$ENV` reference at the key
+ * in the store. Returns the file path.
+ */
+export function writeModelsConfig(dir: string): string {
+  ensureProviders();
+  const providers = store.listProviders();
+  applySecrets(providers);
   mkdirSync(dir, { recursive: true });
-  const p = path.join(dir, 'gateway.json');
-  writeFileSync(p, JSON.stringify(gatewayConfig(), null, 2), 'utf8');
-  return p;
+  const file = path.join(dir, 'models.json');
+  writeFileSync(file, JSON.stringify(modelsDocument(providers), null, 2), 'utf8');
+  return file;
 }
 
-export function assertToken(): void {
-  if (!process.env[ADA_TOKEN_ENV]) {
-    throw new Error(
-      `${ADA_TOKEN_ENV} is not set. Put it in .env — it is interpolated into PI's ` +
-        `model config at load time and is never written to disk by us.`,
-    );
-  }
-  if (!ADA_BASE_URL) {
-    throw new Error('ADA_BASE_URL is not set. Put your gateway\'s base URL in .env.');
-  }
+export function forgetProviderSecret(providerId: string): void {
+  clearSecret(providerId);
 }
+
+/** Which provider and model a bot should call. Throws a message a person can act on. */
+export function resolveSelection(bot: { providerId: string | null; modelId: string | null }): {
+  providerId: string;
+  modelId: string;
+} {
+  ensureProviders();
+  if (store.countProviders() === 0) {
+    if (process.env.ADA_TOKEN && !process.env.ADA_BASE_URL && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ADA_TOKEN is set but ADA_BASE_URL is not. Put the gateway base URL in .env, or add a provider in the UI.');
+    }
+    throw new Error(NO_MODEL);
+  }
+
+  if (bot.providerId && bot.modelId) {
+    const p = store.getProvider(bot.providerId);
+    if (p?.models.some((m) => m.modelId === bot.modelId)) {
+      return { providerId: p.id, modelId: bot.modelId };
+    }
+    throw new Error('这个 Bot 选的模型已经不在了。在它的设置里重选一个。');
+  }
+
+  const d = store.getDefaultModel();
+  const provider = d ? store.getProvider(d.providerId) : undefined;
+  if (!d || !provider?.models.some((m) => m.modelId === d.modelId)) {
+    throw new Error(NO_MODEL);
+  }
+  return d;
+}
+
+export function redactSecrets(text: string): string {
+  return redact(text, store.providerSecrets());
+}
+
+/** For logs at startup. Names and model ids only. */
+export function describeModels(): string {
+  ensureProviders();
+  const all = store.listProviders();
+  if (!all.length) return 'none';
+  const d = store.getDefaultModel();
+  const def = d ? store.getProvider(d.providerId) : undefined;
+  const label = def ? `${def.name} / ${d!.modelId}` : 'no default';
+  return `${all.length} provider(s), default ${label}`;
+}
+
+export type { ProviderRecord };

@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { store } from '../agent/store.ts';
 import type { Bot } from '../protocol.ts';
 import { getSandbox } from '../sandbox/index.ts';
-import { assertToken, DEFAULT_MODEL, DEFAULT_PROVIDER, writeGatewayConfig } from './gateway.ts';
+import { redactSecrets, resolveSelection, writeModelsConfig } from './gateway.ts';
 import { createGate } from './gate.ts';
 import {
   listBotsTool, messageBotTool, type HandoffChain, type HandoffDeps,
@@ -60,6 +60,23 @@ export interface BotSession {
 const sessions = new Map<string, Promise<BotSession>>();
 
 /**
+ * Sessions built against a provider config that has since changed.
+ *
+ * Dropping a session mid-turn aborts the turn. Marking it stale lets the
+ * in-flight turn finish on the model it started with, and the next message
+ * builds a fresh session against the new config.
+ */
+const stale = new Set<string>();
+
+export function invalidateSessions(botId?: string): void {
+  if (botId) {
+    stale.add(botId);
+    return;
+  }
+  for (const id of sessions.keys()) stale.add(id);
+}
+
+/**
  * Forgets a session, but only if it is still the live one for that bot.
  *
  * A timed-out turn evicts itself so the next message starts clean. By then the
@@ -85,11 +102,16 @@ export function setHandoffDeps(deps: HandoffDeps): void {
 }
 
 async function build(bot: Bot): Promise<BotSession> {
-  assertToken();
-  const modelsPath = writeGatewayConfig(CONFIG_DIR);
+  const sel = resolveSelection(bot);
+  const modelsPath = writeModelsConfig(CONFIG_DIR);
   const modelRuntime = await ModelRuntime.create({ modelsPath });
-  const model = modelRuntime.getModel(DEFAULT_PROVIDER, DEFAULT_MODEL);
-  if (!model) throw new Error(`model ${DEFAULT_PROVIDER}/${DEFAULT_MODEL} not found in ${modelsPath}`);
+  const model = modelRuntime.getModel(sel.providerId, sel.modelId);
+  if (!model) {
+    const why = modelRuntime.getError();
+    throw new Error(
+      `model ${sel.providerId}/${sel.modelId} not found` + (why ? `: ${redactSecrets(why)}` : ''),
+    );
+  }
 
   const sandbox = await getSandbox(bot.ownerId, bot.sandboxTarget);
   // What the model is told must match what `pwd` prints, or it spends turns
@@ -414,7 +436,7 @@ async function build(bot: Bot): Promise<BotSession> {
         const run = store.updateRun(runId, { status: 'done', endedAt: Date.now() });
         emit({ type: 'run.updated', run });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = redactSecrets(err instanceof Error ? err.message : String(err));
         step('note', `run failed: ${msg}`);
         const run = store.updateRun(runId, { status: 'failed', endedAt: Date.now(), error: msg });
         emit({ type: 'run.updated', run });
@@ -444,6 +466,10 @@ async function build(bot: Bot): Promise<BotSession> {
         }
       } finally {
         currentRun = null;
+        if (stale.has(bot.id)) {
+          stale.delete(bot.id);
+          await evictIfCurrent(bot.id, instanceId);
+        }
       }
     },
 
@@ -457,6 +483,12 @@ async function build(bot: Bot): Promise<BotSession> {
 }
 
 export function sessionFor(bot: Bot): Promise<BotSession> {
+  if (stale.has(bot.id)) {
+    stale.delete(bot.id);
+    const old = sessions.get(bot.id);
+    sessions.delete(bot.id);
+    if (old) void old.then((s) => s.stop()).catch(() => {});
+  }
   let s = sessions.get(bot.id);
   if (!s) {
     s = build(bot).catch((e) => {
