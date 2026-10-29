@@ -59,6 +59,7 @@ pnpm dmg                 # signed DMG (needs an Apple Developer ID)
 | `src/web/` | The UI, one file |
 | `desktop/` | Electron wrapper |
 | `scripts/` | Tests (see below) |
+| `website/` | Product site, static. See `website/README.md` |
 
 ## Tests
 
