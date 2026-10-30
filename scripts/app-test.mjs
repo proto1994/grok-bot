@@ -94,12 +94,16 @@ try {
     if (!/^http:\/\/127\.0\.0\.1:\d+/.test(url)) throw new Error(`window url is ${url}`);
   });
 
-  await check('it found the credentials on its own', () => {
-    // The dialog this guards against says "缺少模型凭证" and quits, which looks
-    // like a configuration problem on the user's side rather than a wrong path
-    // in the shell.
-    if (/缺少模型凭证|ADA_TOKEN is not set/.test(log)) {
-      throw new Error(`the app could not find .env:\n${log.slice(-400)}`);
+  await check('it started without a model credential in its environment', () => {
+    // The shell used to require ADA_TOKEN and quit with 「缺少模型凭证」 when it
+    // was absent, which locked out anyone who had configured a provider in the
+    // UI instead. Providers live in sqlite now, so missing seeds are not a
+    // reason to refuse to start. Still asserted so a hard exit cannot come back.
+    if (/缺少模型凭证/.test(log)) {
+      throw new Error(`the app refused to start over a missing seed:\n${log.slice(-400)}`);
+    }
+    if (electron.exitCode !== null) {
+      throw new Error(`the app exited with ${electron.exitCode}:\n${log.slice(-400)}`);
     }
   });
 

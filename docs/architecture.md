@@ -964,13 +964,17 @@ flowchart TB
 - **打包后不另带一个 Node 运行时**，用 Electron 自己的；
   也因此 `dist/` 是编译产物而不是 `.ts`（Electron 的内置 Node 版本不做类型剥离）。
 
-> **待核实**：`desktop/main.cjs` 第 102 行仍然硬性要求 `ADA_TOKEN`，
-> 没有就弹框「缺少模型凭证」然后 `app.quit()`。
-> 但模型提供商早已改成在应用里配置（提交 `1914274`「在应用里配置模型提供商，不再写死在 .env」），
-> `.env` 只是数据库为空时的一次性种子。`git log` 显示 `desktop/main.cjs`
-> 最后一次改动是更早的 `f3a9822`，那次提交没有同步这里。
-> 按代码读：**桌面应用目前仍然起不来，除非 `.env` 里有 `ADA_TOKEN`**，
-> 即使用户打算在 UI 里配 DeepSeek。这看起来是漏改而不是设计，但没有在这次工作里动代码。
+**不再检查模型凭证**（已修）。`desktop/main.cjs` 以前在启动前要求 `ADA_TOKEN`，
+没有就弹框「缺少模型凭证」然后 `app.quit()`。这是漏改：模型提供商早已改成
+在应用里配置（提交 `1914274`「在应用里配置模型提供商，不再写死在 .env」），
+`.env` 只是数据库为空时的一次性种子，而那次提交没有同步 `desktop/main.cjs`。
+后果是只在 UI 里配了 DeepSeek 的人根本打不开应用。
+
+现在主进程不做任何凭证判断：`.env` 照旧整份读进子进程的环境（有 `ADA_TOKEN`
+时仍然当种子用），没有也正常启动，服务端日志打 `models none`，
+用户进「模型」把提供商加上。真正缺模型的时候由服务端那条路径报错 ——
+`resolveSelection()` 抛出的提示指向侧边栏的「模型」，
+`server/runtime.ts` 把它记成 `failed` 的 run 并推给页面，而不是让进程退出。
 
 ---
 
@@ -1043,7 +1047,6 @@ flowchart LR
 
 1. **`applyToMcp` 没有生效路径** —— 判定函数和测试都在，但生产代码无人调用，
    且 MCP 只支持 stdio 形态，没有远程 MCP 这一侧。见图 9 下方。
-2. **桌面应用仍硬性要求 `ADA_TOKEN`** —— 与「在应用里配置提供商」这一改动不一致。见图 15 下方。
-3. `protocol.ts` 里的 `RunStatus` 有 `waiting_approval` 和 `budget_exceeded` 两个取值，
+2. `protocol.ts` 里的 `RunStatus` 有 `waiting_approval` 和 `budget_exceeded` 两个取值，
    当前代码不往 `runs.status` 写它们。是留给以后，还是遗留，从代码本身看不出来。
 
