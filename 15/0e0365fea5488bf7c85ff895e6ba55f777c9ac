@@ -1,0 +1,36 @@
+README.md
+  s_2147ec01047e64::t_273e26a0b34e1e 97-104
+website/index.html
+  s_2147ec01047e64::t_a6671430832a7b 699-703
+docs/architecture.md
+  s_2147ec01047e64::t_62ffb63f0392a0 358
+  s_2147ec01047e64::t_905e198bae7cea 621
+  s_2147ec01047e64::t_7f72606a99afd7 939
+  s_2147ec01047e64::t_8c935c5ae5b4b7 1-99
+  s_2147ec01047e64::t_effe1308b9c1cf 636-786,788-811
+  s_2147ec01047e64::t_cb7ac46f70b378 787
+  s_2147ec01047e64::t_08bd50b939526c 374-400,403-493
+  s_2147ec01047e64::t_8f7b910ce1289d 520
+  s_2147ec01047e64::t_96ce08081ed5a5 100-273
+  s_2147ec01047e64::t_7e17a0c2fd0044 274-354,360-373
+  s_2147ec01047e64::t_e4332772b8bc52 355-357,359
+  s_2147ec01047e64::t_8e64e237e7bc59 401-402
+  s_2147ec01047e64::t_4361a15f6a4a69 494-519,521-620,622-635
+  s_2147ec01047e64::t_64241da114348d 812-938,940-1049
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "150e0365fea5488bf7c85ff895e6ba55f777c9ac",
+  "prompts": {},
+  "sessions": {
+    "s_2147ec01047e64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e6409c7-9cc8-427f-9454-ca6ac09220d8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "proto1994 <12874077+proto1994@users.noreply.github.com>"
+    }
+  }
+}
