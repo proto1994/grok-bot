@@ -40,6 +40,12 @@ export interface Bot {
   /** Avatar shape and colour ids; null means derived from the bot's id. */
   shape: string | null;
   color: string | null;
+  /**
+   * Which configured provider and model this bot calls.
+   * Null on either means the account default.
+   */
+  providerId: string | null;
+  modelId: string | null;
 }
 
 export interface Run {

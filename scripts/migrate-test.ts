@@ -83,6 +83,8 @@ await check('the new column is added to an old table', () => {
     .map((c) => c.name);
   db.close();
   assert.ok(cols.includes('sandboxTarget'), `columns: ${cols.join(',')}`);
+  assert.ok(cols.includes('providerId'), `columns: ${cols.join(',')}`);
+  assert.ok(cols.includes('modelId'), `columns: ${cols.join(',')}`);
 });
 
 await check('inserting a bot works after migration', () => {
@@ -144,6 +146,23 @@ console.log('idempotency');
 await check('a second open does not re-run or fail', async () => {
   const mod = await import(`../src/agent/store.ts?again=${Math.random()}`);
   assert.equal(mod.store.listBots('local').length, store.listBots('local').length);
+});
+
+console.log('providers on a migrated database');
+await check('a provider can be stored without disturbing old bots', () => {
+  const secret = 'sk-migrate-secret-value';
+  const p = store.createProvider({
+    name: 'DeepSeek', preset: 'deepseek', apiStyle: 'openai-chat-completions',
+    baseUrl: 'https://api.deepseek.com', apiKey: secret,
+    models: [{
+      modelId: 'deepseek-chat', name: 'DeepSeek Chat',
+      contextWindow: 128000, maxTokens: 8192, reasoning: false,
+    }],
+  });
+  assert.equal(store.getProvider(p.id)?.apiKey, secret);
+  const old = store.listBots('local').find((b) => b.name === '旧 Bot')!;
+  assert.equal(old.providerId, null);
+  assert.equal(old.modelId, null);
 });
 
 console.log(`\n${passed} checks passed`);

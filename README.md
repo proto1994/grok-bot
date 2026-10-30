@@ -4,8 +4,9 @@ Persistent AI teammates with their own sandbox computers. You create a bot, give
 it a job, and it keeps working on that job across restarts — on your machine or
 on a remote sandbox, with you approving the actions that matter.
 
-Modeled on [Cursor's Grok Bot](https://cursor.com/docs/grok-bot), built to run
-against an internal AI gateway rather than a vendor API key.
+Modeled on [Cursor's Grok Bot](https://cursor.com/docs/grok-bot). A bot calls
+whatever provider you configure — Anthropic, OpenAI, or any OpenAI-compatible
+endpoint — and that choice is stored in the app, not hard-wired in `.env`.
 
 ## What it does
 
@@ -34,12 +35,45 @@ Needs Node 22 or newer (`node:sqlite`), and Docker if you want real isolation.
 
 ```bash
 pnpm install
-cp .env.example .env     # fill in ADA_TOKEN and ADA_BASE_URL
+cp .env.example .env     # optional: seed a provider on first run
 pnpm dev                 # http://localhost:4000
 ```
 
 The API is behind a bearer token. One is generated into `.env` on first run if
 `AUTH_TOKEN` is empty; the web UI picks it up automatically on localhost.
+
+## Models
+
+Open the sidebar and choose **模型**. Add a provider (a preset fills the base
+URL, the API style, and a couple of model ids), paste an API key, and use
+**测试连接** before saving. Pick a default model there. Each bot can override
+it from its own settings sheet. Keys are stored in sqlite and only ever shown
+back masked (`sk-a…wxyz`); they are not written into logs or into the
+`models.json` PI reads (that file holds a `$ENV` reference).
+
+On a database that has no providers yet, the first launch imports one from the
+environment so an existing install keeps working:
+
+- `ADA_TOKEN` + `ADA_BASE_URL` (+ optional `PI_MODEL`) — the previous
+  Anthropic-messages gateway. This stays the default when both seeds are set.
+- `ANTHROPIC_API_KEY` (+ optional `MODEL_ID`) — Anthropic directly.
+
+After that, `.env` is not consulted again. Edit providers in the UI.
+
+### DeepSeek
+
+In **模型 → 添加提供商** the DeepSeek preset is the one the form opens on. It fills:
+
+| Field | Value |
+| --- | --- |
+| 接口 | `openai-chat-completions` |
+| Base URL | `https://api.deepseek.com` |
+| 模型 | `deepseek-chat` (and `deepseek-reasoner`, which you can remove) |
+
+Create a key at [platform.deepseek.com](https://platform.deepseek.com), paste it,
+hit **测试连接**, save, and set `deepseek-chat` as the default. `deepseek-chat`
+is the one that tool-calls. A single bot can be pointed at a different model
+from **设置 → 模型** without changing the default.
 
 Desktop app:
 
@@ -63,7 +97,7 @@ pnpm dmg                 # signed DMG (needs an Apple Developer ID)
 ## Tests
 
 ```bash
-pnpm test        # offline: typecheck, store, policy, routines, egress, targets
+pnpm test        # offline: typecheck, store, policy, routines, egress, providers
 pnpm test:live   # needs ADA_TOKEN; drives a real model and a real browser
 ```
 

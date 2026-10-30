@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   Bot, Group, GroupMessage, PendingApproval, PermissionMode, Run, RunStatus, Step, StepKind,
 } from '../protocol.ts';
+import type { ProviderModel, ProviderRecord } from '../pi/providers.ts';
 import type { Routine } from './routines.ts';
 
 const DB_PATH = process.env.DB_PATH ?? './data/app.db';
@@ -28,7 +29,10 @@ CREATE TABLE IF NOT EXISTS bots (
   -- Which sandbox target this bot's computer lives on. NULL means the default.
   -- Changing it moves the bot to a different machine: the workspace there is
   -- separate, so files and logins do not follow.
-  sandboxTarget TEXT
+  sandboxTarget TEXT,
+  -- Which provider and model this bot calls. NULL means the account default.
+  providerId TEXT,
+  modelId TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY,
@@ -161,6 +165,34 @@ CREATE TABLE IF NOT EXISTS memories (
   botId TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
   text TEXT NOT NULL, createdAt INTEGER NOT NULL
 );
+
+-- Model providers. The API key lives here and nowhere the client can read it
+-- back in full. provider_models is the list of model ids on that account.
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  preset TEXT NOT NULL,
+  apiStyle TEXT NOT NULL,
+  baseUrl TEXT NOT NULL,
+  apiKey TEXT NOT NULL,
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS provider_models (
+  providerId TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  modelId TEXT NOT NULL,
+  name TEXT NOT NULL,
+  contextWindow INTEGER NOT NULL,
+  maxTokens INTEGER NOT NULL,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (providerId, modelId)
+);
+
+-- Small key/value table. defaultModel is { providerId, modelId }.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `);
 
 /**
@@ -177,6 +209,8 @@ const MIGRATIONS: { table: string; column: string; decl: string }[] = [
   { table: 'bots', column: 'permissionMode', decl: 'TEXT' },
   { table: 'bots', column: 'shape', decl: 'TEXT' },
   { table: 'bots', column: 'color', decl: 'TEXT' },
+  { table: 'bots', column: 'providerId', decl: 'TEXT' },
+  { table: 'bots', column: 'modelId', decl: 'TEXT' },
 ];
 
 function migrate(): void {
@@ -210,6 +244,7 @@ export const store = {
     const bot: Bot = {
       id: randomUUID(), ownerId, name, job, createdAt: now(), sandboxTarget, permissionMode,
       shape: look.shape ?? null, color: look.color ?? null,
+      providerId: null, modelId: null,
     };
     db.prepare(`INSERT INTO bots (id,ownerId,name,job,createdAt,sandboxTarget,permissionMode,shape,color)
                 VALUES (?,?,?,?,?,?,?,?,?)`).run(
@@ -256,6 +291,18 @@ export const store = {
   /** Moves a bot to another sandbox target. Its workspace there is separate. */
   setBotTarget(botId: string, target: string | null): Bot | undefined {
     db.prepare('UPDATE bots SET sandboxTarget=? WHERE id=?').run(target, botId);
+    return store.getBot(botId);
+  },
+
+  /**
+   * Points a bot at a provider and model, or back at the account default.
+   *
+   * Both null means "use the default". A bot mid-conversation keeps the choice
+   * in the row immediately; the runner drops its session so the next turn
+   * actually calls the new model.
+   */
+  setBotModel(botId: string, providerId: string | null, modelId: string | null): Bot | undefined {
+    db.prepare('UPDATE bots SET providerId=?, modelId=? WHERE id=?').run(providerId, modelId, botId);
     return store.getBot(botId);
   },
 
@@ -628,4 +675,136 @@ export const store = {
       .all(botId) as unknown as { text: string }[];
     return rows.map((r) => r.text);
   },
+
+  countProviders(): number {
+    const row = db.prepare('SELECT COUNT(*) AS n FROM providers').get() as { n: number };
+    return row.n;
+  },
+
+  /** Includes the raw key. Callers that answer HTTP must use toPublic. */
+  listProviders(): ProviderRecord[] {
+    const rows = db.prepare('SELECT id FROM providers ORDER BY createdAt').all() as { id: string }[];
+    return rows.map((r) => store.getProvider(r.id)!);
+  },
+
+  getProvider(id: string): ProviderRecord | undefined {
+    const row = db.prepare('SELECT * FROM providers WHERE id=?').get(id) as {
+      id: string; name: string; preset: string; apiStyle: ProviderRecord['apiStyle'];
+      baseUrl: string; apiKey: string; createdAt: number; updatedAt: number;
+    } | undefined;
+    if (!row) return undefined;
+    const models = db.prepare(
+      `SELECT modelId, name, contextWindow, maxTokens, reasoning
+       FROM provider_models WHERE providerId=? ORDER BY rowid`,
+    ).all(id) as {
+      modelId: string; name: string; contextWindow: number; maxTokens: number; reasoning: number;
+    }[];
+    return {
+      ...row,
+      models: models.map((m) => ({ ...m, reasoning: m.reasoning === 1 })),
+    };
+  },
+
+  createProvider(input: {
+    name: string; preset: string; apiStyle: ProviderRecord['apiStyle'];
+    baseUrl: string; apiKey: string; models: ProviderModel[];
+  }): ProviderRecord {
+    const id = randomUUID();
+    const ts = now();
+    db.prepare(
+      `INSERT INTO providers (id,name,preset,apiStyle,baseUrl,apiKey,createdAt,updatedAt)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run(id, input.name, input.preset, input.apiStyle, input.baseUrl, input.apiKey, ts, ts);
+    writeModels(id, input.models);
+    return store.getProvider(id)!;
+  },
+
+  updateProvider(id: string, input: {
+    name: string; preset: string; apiStyle: ProviderRecord['apiStyle'];
+    baseUrl: string; apiKey: string; models: ProviderModel[];
+  }): ProviderRecord | undefined {
+    if (!store.getProvider(id)) return undefined;
+    db.prepare(
+      `UPDATE providers SET name=?, preset=?, apiStyle=?, baseUrl=?, apiKey=?, updatedAt=? WHERE id=?`,
+    ).run(input.name, input.preset, input.apiStyle, input.baseUrl, input.apiKey, now(), id);
+    db.prepare('DELETE FROM provider_models WHERE providerId=?').run(id);
+    writeModels(id, input.models);
+    return store.getProvider(id);
+  },
+
+  /**
+   * Removes a provider.
+   *
+   * Bots that pointed at it fall back to the default rather than keeping a
+   * dangling id. If it was the default, the next remaining provider becomes
+   * the default so a running install does not suddenly have nowhere to send
+   * a turn.
+   */
+  deleteProvider(id: string): boolean {
+    if (!store.getProvider(id)) return false;
+    const wasDefault = store.getDefaultModel()?.providerId === id;
+    db.prepare('DELETE FROM providers WHERE id=?').run(id);
+    db.prepare('UPDATE bots SET providerId=NULL, modelId=NULL WHERE providerId=?').run(id);
+    if (wasDefault) {
+      const next = store.listProviders().find((p) => p.models.length);
+      if (next) store.setDefaultModel(next.id, next.models[0]!.modelId);
+      else store.clearDefaultModel();
+    }
+    return true;
+  },
+
+  /**
+   * Bots pointed at a model id this provider no longer has fall back to the
+   * default. Leaving the old id would fail the next turn with a dangling name.
+   */
+  releaseBotsFromMissingModels(providerId: string, modelIds: string[]): void {
+    const rows = db.prepare('SELECT id, modelId FROM bots WHERE providerId=?').all(providerId) as {
+      id: string; modelId: string | null;
+    }[];
+    for (const row of rows) {
+      if (row.modelId && !modelIds.includes(row.modelId)) {
+        db.prepare('UPDATE bots SET providerId=NULL, modelId=NULL WHERE id=?').run(row.id);
+      }
+    }
+  },
+
+  /** Every stored key, for redacting error text. Empty keys are not secrets. */
+  providerSecrets(): string[] {
+    const rows = db.prepare(`SELECT apiKey FROM providers WHERE apiKey != ''`).all() as { apiKey: string }[];
+    return rows.map((r) => r.apiKey);
+  },
+
+  getDefaultModel(): { providerId: string; modelId: string } | null {
+    const row = db.prepare(`SELECT value FROM app_settings WHERE key='defaultModel'`).get() as
+      { value: string } | undefined;
+    if (!row) return null;
+    try {
+      const v = JSON.parse(row.value) as { providerId?: string; modelId?: string };
+      if (!v.providerId || !v.modelId) return null;
+      return { providerId: v.providerId, modelId: v.modelId };
+    } catch {
+      return null;
+    }
+  },
+
+  setDefaultModel(providerId: string, modelId: string): void {
+    db.prepare(
+      `INSERT INTO app_settings (key, value) VALUES ('defaultModel', ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    ).run(JSON.stringify({ providerId, modelId }));
+  },
+
+  clearDefaultModel(): void {
+    db.prepare(`DELETE FROM app_settings WHERE key='defaultModel'`).run();
+  },
 };
+
+function writeModels(providerId: string, models: ProviderModel[]): void {
+  const ins = db.prepare(
+    `INSERT INTO provider_models (providerId, modelId, name, contextWindow, maxTokens, reasoning)
+     VALUES (?,?,?,?,?,?)`,
+  );
+  for (const m of models) {
+    ins.run(providerId, m.modelId, m.name, m.contextWindow, m.maxTokens, m.reasoning ? 1 : 0);
+  }
+}
