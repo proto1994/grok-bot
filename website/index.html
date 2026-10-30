@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bots — 有自己电脑的 AI 队友</title>
+  <meta name="description" content="Bots 是 Cursor Grok Bot 的自托管开源实现：持久 AI 队友，每人一台沙箱电脑，写入和出网先审批。支持 Anthropic 与 OpenAI 兼容端点。Web、macOS、局域网手机。MIT。 Self-hosted, open-source AI teammates — each with a sandbox computer, an approval gate, and an egress allowlist.">
+  <meta name="author" content="hf.shi">
+  <meta name="theme-color" id="theme-color" content="#f4f4f5">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bots">
+  <meta property="og:title" content="Bots — 有自己电脑的 AI 队友">
+  <meta property="og:description" content="自托管、开源的持久 AI 队友。每个 Bot 有自己的沙箱电脑；写入和出网先经过审批。Web、macOS，以及局域网里的手机。">
+  <meta property="og:url" content="https://github.com/proto1994/grok-bot">
+  <meta property="og:image" content="https://github.com/proto1994/grok-bot/raw/main/website/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Bots — 有自己电脑的 AI 队友">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Bots — 有自己电脑的 AI 队友">
+  <meta name="twitter:description" content="自托管、开源的持久 AI 队友。每个 Bot 有自己的沙箱电脑；写入和出网先经过审批。">
+  <meta name="twitter:image" content="https://github.com/proto1994/grok-bot/raw/main/website/og.png">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preload" as="image" href="assets/05-approval.webp">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "Bots",
+    "codeRepository": "https://github.com/proto1994/grok-bot",
+    "license": "https://opensource.org/licenses/MIT",
+    "programmingLanguage": "TypeScript",
+    "description": "Self-hosted, open-source AI teammates. Each bot has its own sandbox computer, an approval gate, and an egress allowlist."
+  }
+  </script>
+  <script>
+    (function () {
+      try {
+        var params = new URLSearchParams(location.search);
+        var lang = params.get("lang") || localStorage.getItem("bots-lang");
+        var theme = params.get("theme") || localStorage.getItem("bots-theme");
+        if (lang === "en") {
+          document.documentElement.setAttribute("data-lang", "en");
+          document.documentElement.lang = "en";
+          document.title = "Bots — AI teammates with a computer of their own";
+        }
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+        var dark = theme === "dark" || (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var meta = document.getElementById("theme-color");
+        if (meta) meta.setAttribute("content", dark ? "#121214" : "#f4f4f5");
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip" href="#content">
+    <span class="t-zh">跳到正文</span>
+    <span class="t-en">Skip to content</span>
+  </a>
+
+  <header class="header">
+    <div class="header-inner">
+      <a class="brand" href="#top" aria-label="Bots">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <path fill="#f97316" d="M50 10c12 0 21 6 25 14 10 2 17 10 17 21 0 10-6 18-15 22 0 11-9 19-21 19-6 0-12-2-16-6-5 4-12 5-18 3-10-4-15-14-12-24-8-5-12-13-10-22 2-10 11-17 21-17 5-7 12-10 29-10z"/>
+          <rect x="39" y="42" width="8" height="18" rx="4" fill="#fff"/>
+          <rect x="53" y="42" width="8" height="18" rx="4" fill="#fff"/>
+        </svg>
+        Bots
+      </a>
+      <nav id="site-nav" aria-label="页面">
+        <a href="#features"><span class="t-zh">功能</span><span class="t-en">Features</span></a>
+        <a href="#tour"><span class="t-zh">界面</span><span class="t-en">Tour</span></a>
+        <a href="#start"><span class="t-zh">开始</span><span class="t-en">Start</span></a>
+        <a href="#security"><span class="t-zh">安全</span><span class="t-en">Security</span></a>
+      </nav>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Language">
+          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+          <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <button type="button" class="theme-btn">
+          <span class="when-light"><span class="t-zh">深色</span><span class="t-en">Dark</span></span>
+          <span class="when-dark"><span class="t-zh">浅色</span><span class="t-en">Light</span></span>
+        </button>
+        <a class="gh" href="https://github.com/proto1994/grok-bot" rel="noopener noreferrer">
+          <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.7 7.7 0 0 1 8 4.77c.68.003 1.36.092 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span class="gh-text">GitHub</span>
+        </a>
+        <button type="button" class="menu-btn" aria-expanded="false" aria-controls="site-nav">
+          <span class="t-zh">菜单</span>
+          <span class="t-en">Menu</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="hero" id="top">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="kicker">GITHUB.COM/PROTO1994/GROK-BOT</p>
+          <h1>
+            <span class="t-zh">有自己电脑的<br>AI 队友</span>
+            <span class="t-en">AI teammates<br>with a computer<br>of their own</span>
+          </h1>
+          <p class="lede">
+            <span class="t-zh">创建一个 Bot，交给它一份职责。它会在你的机器上，或在远程沙箱里，把这件事一直做下去——重启也不丢掉。该由你拍板的动作，会先停下来等批准。</span>
+            <span class="t-en">Create a bot, give it a job, and it keeps working on that job across restarts — on your machine or a remote sandbox — and it stops for the actions that matter.</span>
+          </p>
+          <p class="note">
+            <span class="t-zh">参照 <a href="https://cursor.com/docs/grok-bot">Cursor 的 Grok Bot</a> 而做的自托管开源实现。MIT 许可。</span>
+            <span class="t-en">A self-hosted, open-source take on <a href="https://cursor.com/docs/grok-bot">Cursor's Grok Bot</a>. MIT licensed.</span>
+          </p>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/proto1994/grok-bot" rel="noopener noreferrer">
+              <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.7 7.7 0 0 1 8 4.77c.68.003 1.36.092 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+              <span class="t-zh">在 GitHub 上查看</span>
+              <span class="t-en">View on GitHub</span>
+            </a>
+            <a class="btn btn-ghost" href="#start">
+              <span class="t-zh">怎么跑起来</span>
+              <span class="t-en">Run it</span>
+            </a>
+          </div>
+          <ul class="pills">
+            <li><span class="t-zh">Node.js 22 及以上</span><span class="t-en">Node.js 22 or newer</span></li>
+            <li><span class="t-zh">Docker 沙箱，或本机</span><span class="t-en">Docker sandbox, or local</span></li>
+            <li>Web · macOS · LAN</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual">
+          <div class="stage-hero">
+          <div class="browser">
+            <div class="browser-top">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="url">localhost:4000</span>
+            </div>
+            <img
+              src="assets/05-approval.webp"
+              width="1280"
+              height="860"
+              alt="对话中，Bot 请求写入 browser.txt。卡片写着「要我写入文件吗？会改动沙箱里的东西」，下面是批准和拒绝。"
+              data-alt-en="A conversation where the bot asks to write browser.txt. The card says the write would change something in the sandbox, with approve and refuse."
+              fetchpriority="high">
+          </div>
+          <div class="device-phone">
+            <img
+              src="assets/10-phone.webp"
+              width="390"
+              height="844"
+              alt="同一条对话在手机宽度下的样子。"
+              data-alt-en="The same conversation at phone width.">
+          </div>
+          </div>
+          <p class="caption">
+            <span class="t-zh">真实界面，来自项目自带的浏览器测试。不是示意图。</span>
+            <span class="t-en">The real UI, captured by the project's browser tests. Not a mockup.</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">01</p>
+          <h2>
+            <span class="t-zh">一台电脑，一份职责，一条要问你的边界</span>
+            <span class="t-en">A computer, a job, and a line it has to ask about</span>
+          </h2>
+          <p>
+            <span class="t-zh">每个 Bot 是一位持久的队友：自己的工作区、自己的对话、自己的权限。下面这些都是现在代码里的行为。</span>
+            <span class="t-en">Each bot is a persistent teammate: its own workspace, its own thread, its own permission mode. Everything below is behavior that is in the code today.</span>
+          </p>
+        </header>
+        <div class="grid">
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg viewBox="0 0 100 100" width="22" height="22">
+                  <path fill="#f97316" d="M50 10c12 0 21 6 25 14 10 2 17 10 17 21 0 10-6 18-15 22 0 11-9 19-21 19-6 0-12-2-16-6-5 4-12 5-18 3-10-4-15-14-12-24-8-5-12-13-10-22 2-10 11-17 21-17 5-7 12-10 29-10z"/>
+                  <rect x="39" y="42" width="8" height="18" rx="4" fill="#fff"/>
+                  <rect x="53" y="42" width="8" height="18" rx="4" fill="#fff"/>
+                </svg>
+              </span>
+              <span class="idx">01</span>
+            </div>
+            <h3><span class="t-zh">一个 Bot，一份工作</span><span class="t-en">A bot per job</span></h3>
+            <p>
+              <span class="t-zh">给它名字、一张脸、一段职责。工作区、对话记录和权限模式都是它自己的。一轮工作会留下来，进程重启也不会丢掉。</span>
+              <span class="t-en">Name it, pick a face, say what it is for. The workspace, the history, and the permission mode belong to that bot. A run survives a process restart.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 9l2.4 2.2L7 13.4M12 14h5"/></svg>
+              </span>
+              <span class="idx">02</span>
+            </div>
+            <h3><span class="t-zh">一台自己的电脑</span><span class="t-en">A computer of its own</span></h3>
+            <p>
+              <span class="t-zh"><code>bash</code>、<code>read</code>、<code>write</code>、<code>edit</code>、<code>ls</code> 跑在沙箱里：Docker 容器，或仅供开发的本机。换一个目标就是换一台机器，那边的工作区不会跟着走。</span>
+              <span class="t-en"><code>bash</code>, <code>read</code>, <code>write</code>, <code>edit</code>, and <code>ls</code> run in a sandbox: a Docker container, or — for development only — your own machine. Switching targets is a config change. The workspace on each target stays where it is.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></svg>
+              </span>
+              <span class="idx">03</span>
+            </div>
+            <h3><span class="t-zh">审批，不是信任</span><span class="t-en">Approval, not trust</span></h3>
+            <p>
+              <span class="t-zh">每次工具调用分成只读、写入、外部。按这个 Bot 的模式决定要不要先问你。额外规则只能收紧模式已经允许的事，不能放宽。</span>
+              <span class="t-en">Every tool call is classified read, write, or external, and held for approval according to that bot's mode. Extra rules may only tighten what a mode allows. They never loosen it.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.2 2.3 3.3 5.1 3.3 8s-1.1 5.7-3.3 8c-2.2-2.3-3.3-5.1-3.3-8s1.1-5.7 3.3-8z"/></svg>
+              </span>
+              <span class="idx">04</span>
+            </div>
+            <h3><span class="t-zh">出网白名单</span><span class="t-en">An egress allowlist</span></h3>
+            <p>
+              <span class="t-zh">Docker 驱动可以把沙箱放进 <code>--internal</code> 网络，只让桥接代理放行名单上的地址。MCP 是另一条出口，只有打开 <code>applyToMcp</code> 才受同一份名单约束。</span>
+              <span class="t-en">The Docker driver can put a sandbox on an <code>--internal</code> network behind a bridging proxy, so only an allowlist gets out. MCP is a separate egress path, and it is only covered when <code>applyToMcp</code> is set.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg>
+              </span>
+              <span class="idx">05</span>
+            </div>
+            <h3><span class="t-zh">例行，它自己排</span><span class="t-en">Routines it schedules</span></h3>
+            <p>
+              <span class="t-zh">跟它说把这件事排进每天的固定日程，它会自己建一条例行。你看到一份可以关掉的列表。日程是几点、哪几天，不是假装精确到分钟的 cron。</span>
+              <span class="t-en">Ask for something regularly and the bot schedules it itself. You get a list you can switch off. The schedule is a time of day and which days — not a cron that pretends to be exact to the minute.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.2"/><circle cx="17" cy="16" r="2.2"/><path d="M9.2 9.2l5.6 5.4"/></svg>
+              </span>
+              <span class="idx">06</span>
+            </div>
+            <h3><span class="t-zh">交给同事，或拉个小组</span><span class="t-en">Handoff, or a group</span></h3>
+            <p>
+              <span class="t-zh">一个 Bot 可以把活异步交给另一个。接收方仍走自己的审批，转交借不走权限；循环会被拒绝，链也有深度上限。两到六个 Bot 还可以共享小组对话，用 <code>@名字</code> 点名。</span>
+              <span class="t-en">A bot can hand work to another asynchronously. The receiver keeps its own gate — delegation does not borrow permissions. Cycles are refused, and a chain has a depth limit. Two to six bots can also share a group chat, addressed with <code>@name</code>.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="13" height="9" rx="1.5"/><path d="M6 17.5h6"/><rect x="16.5" y="8" width="5" height="9.5" rx="1"/></svg>
+              </span>
+              <span class="idx">07</span>
+            </div>
+            <h3><span class="t-zh">Web、Mac、手机</span><span class="t-en">Web, Mac, and a phone</span></h3>
+            <p>
+              <span class="t-zh">同一套界面：浏览器、macOS 桌面应用，以及局域网里的手机。手机用同一枚令牌。<code>pnpm lan</code> 才会把端口绑出本机，终端里会打出配对地址。</span>
+              <span class="t-en">The same UI: a browser, a macOS desktop app, and your phone on the LAN, with the same token. <code>pnpm lan</code> is what binds the port off localhost, and the terminal prints a pairing URL.</span>
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-top">
+              <span class="icon-well" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7v3.5M15 7v3.5"/><rect x="7" y="10.5" width="10" height="6" rx="2"/><path d="M12 16.5V20"/></svg>
+              </span>
+              <span class="idx">08</span>
+            </div>
+            <h3>MCP</h3>
+            <p>
+              <span class="t-zh">用 <code>mcp.json</code> 接上 MCP server。没有列进 <code>readOnlyTools</code> 的工具，默认按需要审批处理。</span>
+              <span class="t-en">Connect MCP servers from <code>mcp.json</code>. Tools that are not listed in <code>readOnlyTools</code> need approval by default.</span>
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tour">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">02</p>
+          <h2>
+            <span class="t-zh">用真实界面走一遍</span>
+            <span class="t-en">A tour of the real UI</span>
+          </h2>
+          <p>
+            <span class="t-zh">这 12 张图是浏览器测试拍下来的，从空状态到批准、沙箱、小组和例行。应用界面目前是中文。</span>
+            <span class="t-en">These 12 frames come from the browser test suite: empty state through approval, the sandbox, a group, and routines. The product UI is in Chinese.</span>
+          </p>
+        </header>
+
+        <div class="tour-layout">
+          <ol class="shot-list">
+            <li><button type="button" class="shot" data-shot="01" aria-pressed="true"><span class="num">01</span><span class="t-zh">空着的开始</span><span class="t-en">Empty</span></button></li>
+            <li><button type="button" class="shot" data-shot="02" aria-pressed="false"><span class="num">02</span><span class="t-zh">名字和一张脸</span><span class="t-en">A face</span></button></li>
+            <li><button type="button" class="shot" data-shot="03" aria-pressed="false"><span class="num">03</span><span class="t-zh">先问你要做什么</span><span class="t-en">It asks first</span></button></li>
+            <li><button type="button" class="shot" data-shot="04" aria-pressed="false"><span class="num">04</span><span class="t-zh">在做了</span><span class="t-en">Working</span></button></li>
+            <li><button type="button" class="shot" data-shot="05" aria-pressed="false"><span class="num">05</span><span class="t-zh">批准或拒绝</span><span class="t-en">Approve</span></button></li>
+            <li><button type="button" class="shot" data-shot="06" aria-pressed="false"><span class="num">06</span><span class="t-zh">还在同一条对话</span><span class="t-en">Same thread</span></button></li>
+            <li><button type="button" class="shot" data-shot="07" aria-pressed="false"><span class="num">07</span><span class="t-zh">接上的工具</span><span class="t-en">Tools</span></button></li>
+            <li><button type="button" class="shot" data-shot="08" aria-pressed="false"><span class="num">08</span><span class="t-zh">电脑在哪</span><span class="t-en">Which computer</span></button></li>
+            <li><button type="button" class="shot" data-shot="09" aria-pressed="false"><span class="num">09</span><span class="t-zh">深色</span><span class="t-en">Dark</span></button></li>
+            <li><button type="button" class="shot" data-shot="10" aria-pressed="false"><span class="num">10</span><span class="t-zh">手机</span><span class="t-en">Phone</span></button></li>
+            <li><button type="button" class="shot" data-shot="11" aria-pressed="false"><span class="num">11</span><span class="t-zh">小组</span><span class="t-en">Group</span></button></li>
+            <li><button type="button" class="shot" data-shot="12" aria-pressed="false"><span class="num">12</span><span class="t-zh">权限和例行</span><span class="t-en">Routines</span></button></li>
+          </ol>
+
+          <div class="stage">
+            <div class="frame">
+              <img class="is-on" data-frame="01" src="assets/01-empty.webp" width="1280" height="860" alt="空白的主界面。中间写着：左上角新建一个 Bot，给它名字、职责，和它必须停下来问你的边界。" data-alt-en="The empty app. The center says to create a bot from the top left, and to give it a name, a job, and the line it must stop to ask about.">
+              <img data-frame="02" src="assets/02-new-bot.webp" width="1280" height="860" alt="创建新 Bot 的对话框：名字、一排形状和一排颜色。" data-alt-en="The new-bot dialog: a name, a row of shapes, and a row of colors.">
+              <img data-frame="03" src="assets/03-bot-created.webp" width="1280" height="860" alt="新建的 Bot 先用选择题问想先做哪一类事。" data-alt-en="A newly created bot opens by asking, with a multiple choice, what to do first.">
+              <img data-frame="04" src="assets/04-thinking.webp" width="1280" height="860" alt="用户选定方向后，Bot 显示「在做了」。" data-alt-en="After a direction is chosen, the bot shows that it is working.">
+              <img data-frame="05" src="assets/05-approval.webp" width="1280" height="860" alt="批准卡片：要我写入文件吗？会改动沙箱里的东西。按钮是批准和拒绝。" data-alt-en="An approval card asking to write a file because it would change something in the sandbox, with approve and refuse.">
+              <img data-frame="06" src="assets/06-after-approval.webp" width="1280" height="860" alt="问答留在同一条对话里，Bot 仍显示在做了。" data-alt-en="The question and the chosen answer remain in the same thread while the bot is working.">
+              <img data-frame="07" src="assets/07-apps.webp" width="1280" height="860" alt="连接应用面板，列出 bash、read、write、edit、ls 以及例行和转交工具，并标明只读或需审批。" data-alt-en="The connected-apps sheet listing bash, read, write, edit, ls, routines, and handoff, each marked read-only or needs approval.">
+              <img data-frame="08" src="assets/08-sandbox.webp" width="1280" height="860" alt="沙箱位置面板。说明切换等于换一台机器，工作区不会跟着走。" data-alt-en="The sandbox-location sheet. Switching targets means another machine, and the workspace does not follow.">
+              <img data-frame="09" src="assets/09-dark.webp" width="1280" height="860" alt="深色界面里的同一条对话，以及一张询问是否运行命令的批准卡片。" data-alt-en="The same conversation in dark mode, with a card asking whether to run a command.">
+              <img data-frame="10" src="assets/10-phone.webp" width="390" height="844" alt="手机宽度下的对话布局。" data-alt-en="The conversation laid out at phone width.">
+              <img data-frame="11" src="assets/11-group.webp" width="1280" height="860" alt="名为小组的会话。侧栏里有两个 Bot，输入框提示用 @ 指定成员。" data-alt-en="A group conversation. Two bots are in the sidebar, and the composer says to address members with @.">
+              <img data-frame="12" src="assets/12-routines.webp" width="1280" height="860" alt="设置面板：逐次确认、平衡（默认）、完全权限，以及还没有例行任务的说明。" data-alt-en="Settings: strict, balanced (the default), and full, plus the note that this bot has no routines yet.">
+            </div>
+            <p class="cap is-on" data-cap="01"><span class="t-zh">还没有 Bot。正中间写着：给它名字、职责，以及它必须停下来问你的边界。</span><span class="t-en">No bot yet. The empty state says to give it a name, a job, and the line it has to stop and ask about.</span></p>
+            <p class="cap" data-cap="02"><span class="t-zh">形状和颜色是它的脸。更多设置里可以先选权限模式和沙箱位置。</span><span class="t-en">Shape and color are its face. More settings is where the permission mode and the sandbox target live.</span></p>
+            <p class="cap" data-cap="03"><span class="t-zh">创建之后，它用一张选择题开口，而不是直接去动沙箱。</span><span class="t-en">After you create it, it opens with a choice, rather than touching the sandbox on its own.</span></p>
+            <p class="cap" data-cap="04"><span class="t-zh">你选定方向，它开始这一轮。对话留在这个 Bot 自己的记录里。</span><span class="t-en">You pick a direction and the turn starts. The thread stays with this bot.</span></p>
+            <p class="cap" data-cap="05"><span class="t-zh">写入会停住。卡片写明原因——会改动沙箱里的东西——以及它要动的文件。批准，或拒绝。</span><span class="t-en">A write stops. The card names why — it would change something in the sandbox — and the file it wants to touch. Approve, or refuse.</span></p>
+            <p class="cap" data-cap="06"><span class="t-zh">问过的问题和你的选择留在记录里，工作从这里继续。</span><span class="t-en">The question and your answer stay in the thread, and the work continues from there.</span></p>
+            <p class="cap" data-cap="07"><span class="t-zh">bash、read、write、edit、ls，以及提问、例行、转交。MCP 工具默认需要审批，除非在 mcp.json 里标成只读。</span><span class="t-en">bash, read, write, edit, ls, plus questions, routines, and handoff. MCP tools need approval unless mcp.json marks them read-only.</span></p>
+            <p class="cap" data-cap="08"><span class="t-zh">每个 Bot 选一个沙箱目标。换一台机器，那边的工作区是另一份，文件不会跟着走。</span><span class="t-en">Each bot picks a sandbox target. Another machine means a separate workspace. Files do not come along.</span></p>
+            <p class="cap" data-cap="09"><span class="t-zh">同一套界面的深色。该停下来问你的卡片，还是会停在那里。</span><span class="t-en">The same UI in dark. A card that should stop for you still stops.</span></p>
+            <p class="cap" data-cap="10"><span class="t-zh">窄屏上的同一条对话。局域网里用同一枚令牌打开；把端口绑出本机是另开的。</span><span class="t-en">The same thread at phone width. On the LAN it uses the same token. Listening beyond localhost is opt-in.</span></p>
+            <p class="cap" data-cap="11"><span class="t-zh">两到六个 Bot 共享一个对话。用 @名字 指定谁来答。</span><span class="t-en">Two to six bots share one conversation. @name picks who should answer.</span></p>
+            <p class="cap" data-cap="12"><span class="t-zh">逐次确认、平衡、完全权限。例行还没有的时候，告诉它把这件事排进每天的日程，列表就会出现在这里。</span><span class="t-en">Strict, balanced, or full. With no routines yet, telling it to put the job on a daily schedule is what fills this list.</span></p>
+            <p class="hint">
+              <span class="t-zh">方向键可以切换。画面没有重画。</span>
+              <span class="t-en">Arrow keys move between frames. Nothing here was redrawn.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="start">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">03</p>
+          <h2>
+            <span class="t-zh">跑起来</span>
+            <span class="t-en">Run it</span>
+          </h2>
+          <p>
+            <span class="t-zh">需要 Node.js 22 或更新（用到 <code>node:sqlite</code>）。要真正的隔离，再备一个 Docker。命令和仓库 README 一致。</span>
+            <span class="t-en">Needs Node.js 22 or newer (<code>node:sqlite</code>), and Docker if you want real isolation. The commands match the repository README.</span>
+          </p>
+        </header>
+
+        <div class="stack">
+          <div class="block">
+            <h3><span class="t-zh">本机</span><span class="t-en">On this machine</span></h3>
+            <div class="code">
+              <div class="code-bar">
+                <span>bash</span>
+                <button type="button" class="copy" data-copy>
+                  <span class="idle"><span class="t-zh">复制</span><span class="t-en">Copy</span></span>
+                  <span class="done"><span class="t-zh">已复制</span><span class="t-en">Copied</span></span>
+                </button>
+              </div>
+              <pre class="t-zh">pnpm install
+cp .env.example .env     # 填上 ADA_TOKEN 和 ADA_BASE_URL
+pnpm dev                 # http://localhost:4000</pre>
+              <pre class="t-en">pnpm install
+cp .env.example .env     # fill in ADA_TOKEN and ADA_BASE_URL
+pnpm dev                 # http://localhost:4000</pre>
+            </div>
+            <p>
+              <span class="t-zh">API 放在一枚 bearer token 后面。如果 <code>AUTH_TOKEN</code> 是空的，第一次运行会生成一枚写进 <code>.env</code>。在 localhost 上，Web 界面会自己带上它。</span>
+              <span class="t-en">The API sits behind a bearer token. One is generated into <code>.env</code> on first run if <code>AUTH_TOKEN</code> is empty. On localhost, the web UI picks it up.</span>
+            </p>
+            <p>
+              <span class="t-zh">示例里的 <code>SANDBOX_DRIVER=local</code> 没有任何隔离，还要 <code>SANDBOX_ALLOW_LOCAL=1</code> 才肯在这台机器上跑命令。它只适合开发。要隔离，用 Docker。</span>
+              <span class="t-en">The sample <code>SANDBOX_DRIVER=local</code> provides no isolation, and it will not run commands on the host unless <code>SANDBOX_ALLOW_LOCAL=1</code>. That driver is for development. Use Docker when you want isolation.</span>
+            </p>
+          </div>
+
+          <div class="block">
+            <h3><span class="t-zh">桌面应用</span><span class="t-en">Desktop app</span></h3>
+            <div class="code">
+              <div class="code-bar">
+                <span>bash</span>
+                <button type="button" class="copy" data-copy>
+                  <span class="idle"><span class="t-zh">复制</span><span class="t-en">Copy</span></span>
+                  <span class="done"><span class="t-zh">已复制</span><span class="t-en">Copied</span></span>
+                </button>
+              </div>
+              <pre class="t-zh">pnpm app                 # 从源码运行
+pnpm dmg                 # 签名的 DMG（需要 Apple Developer ID）</pre>
+              <pre class="t-en">pnpm app                 # run from source
+pnpm dmg                 # signed DMG (needs an Apple Developer ID)</pre>
+            </div>
+          </div>
+
+          <div class="block">
+            <h3><span class="t-zh">局域网里的手机</span><span class="t-en">A phone on the LAN</span></h3>
+            <div class="code">
+              <div class="code-bar">
+                <span>bash</span>
+                <button type="button" class="copy" data-copy>
+                  <span class="idle"><span class="t-zh">复制</span><span class="t-en">Copy</span></span>
+                  <span class="done"><span class="t-zh">已复制</span><span class="t-en">Copied</span></span>
+                </button>
+              </div>
+              <pre class="t-zh">pnpm lan                 # BIND=lan，终端会打出带令牌的地址</pre>
+              <pre class="t-en">pnpm lan                 # BIND=lan; the terminal prints a URL with the token</pre>
+            </div>
+            <p>
+              <span class="t-zh">绑出 127.0.0.1 之后，这枚令牌就成了唯一的门。完全权限下的 Bot 会在这台机器上跑命令，所以不要把它留在你不掌控的网络上。服务启动时会把这件事直接打在日志里。</span>
+              <span class="t-en">Once the server leaves 127.0.0.1, the token is the only gate. A bot in full mode runs commands on that machine, so do not leave it bound on a network you do not control. The server says this in the log when it starts.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="providers">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">04</p>
+          <h2>
+            <span class="t-zh">模型提供方</span>
+            <span class="t-en">Model providers</span>
+          </h2>
+          <p>
+            <span class="t-zh">模型层是可插拔的。支持 Anthropic，也支持 OpenAI 兼容的端点，例如 DeepSeek。</span>
+            <span class="t-en">The model layer is pluggable. Anthropic is supported, and so are OpenAI-compatible endpoints, such as DeepSeek.</span>
+          </p>
+        </header>
+        <div class="providers">
+          <article class="provider">
+            <h3>Anthropic</h3>
+            <p>
+              <span class="t-zh">仓库 README 里写明的启动方式，是用 <code>ADA_TOKEN</code> 和 <code>ADA_BASE_URL</code> 指向一个兼容 Anthropic Messages 的网关。生成给运行时的配置只写变量名，令牌留在环境里。</span>
+              <span class="t-en">What the repository README documents today is pointing <code>ADA_TOKEN</code> and <code>ADA_BASE_URL</code> at an Anthropic Messages–compatible gateway. Generated config stores the variable name. The token stays in the environment.</span>
+            </p>
+          </article>
+          <article class="provider">
+            <h3><span class="t-zh">OpenAI 兼容端点</span><span class="t-en">OpenAI-compatible endpoints</span></h3>
+            <p>
+              <span class="t-zh">同一层也可以接 OpenAI 兼容的服务，例如 DeepSeek。密钥留在你自己的环境里，不写进仓库。</span>
+              <span class="t-en">The same layer can point at an OpenAI-compatible service, such as DeepSeek. Keys stay in your environment, not in the repository.</span>
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="security">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">05</p>
+          <h2>
+            <span class="t-zh">沙箱、审批、出网</span>
+            <span class="t-en">Sandbox, approval, egress</span>
+          </h2>
+          <p>
+            <span class="t-zh">三道是分开的。沙箱决定命令跑在哪，审批决定要不要先问你，白名单决定沙箱那台电脑能连去哪。混成一件事，就会漏。</span>
+            <span class="t-en">The three are separate. The sandbox is where a command runs, the gate is whether it has to ask, and the allowlist is where that computer may connect. Treating them as one perimeter is how a hole appears.</span>
+          </p>
+        </header>
+
+        <div class="sec-grid">
+          <article class="panel">
+            <h3><span class="t-zh">沙箱</span><span class="t-en">Sandbox</span></h3>
+            <ul>
+              <li><span class="t-zh">Docker：这台机器上的，或经 SSH、Docker context 连到的远程守护进程。</span><span class="t-en">Docker, on this machine or a remote daemon reached over SSH or a Docker context.</span></li>
+              <li><span class="t-zh"><code>local</code>：跑在编排进程那台主机上，没有隔离。只为开发而设。</span><span class="t-en"><code>local</code> runs on the orchestrator host with no isolation. Development only.</span></li>
+              <li><span class="t-zh">每个 Bot 选一个目标。换目标不会把文件、登录态和装过的包带过去。</span><span class="t-en">Each bot picks a target. Switching does not take files, logins, or installed packages with it.</span></li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3><span class="t-zh">审批</span><span class="t-en">Approval</span></h3>
+            <ul>
+              <li><span class="t-zh">这是规则引擎，不是写在提示词里的一句话。模型可以说服人，说不服这个函数。</span><span class="t-en">A rule engine, not a line in the prompt. A model can be talked out of an instruction. It cannot talk its way past this function.</span></li>
+              <li><span class="t-zh">更严的一边赢。成员规则不能把团队规则放宽。</span><span class="t-en">Stricter wins. Member rules cannot loosen what team rules allow.</span></li>
+              <li><span class="t-zh">转交给另一个 Bot 时，接收方仍用自己的门。</span><span class="t-en">When work is handed to another bot, the receiver's own gate still applies.</span></li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3><span class="t-zh">出网</span><span class="t-en">Egress</span></h3>
+            <ul>
+              <li><span class="t-zh">只由 Docker 驱动执行。<code>local</code> 没有网络控制。</span><span class="t-en">Enforced by the Docker driver. The local driver has no network control.</span></li>
+              <li><span class="t-zh">stdio MCP 跑在宿主机上，不在沙箱网络里，这份策略盖不住它们自己连出去的地址。</span><span class="t-en">stdio MCP servers run on the host, outside the sandbox network. This policy does not cover what they connect to.</span></li>
+              <li><span class="t-zh">远程 MCP 从编排进程拨号。只有 <code>applyToMcp</code> 为真时才用同一份名单。</span><span class="t-en">Remote MCP is dialed from the orchestrator. It uses the same list only when <code>applyToMcp</code> is true.</span></li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <caption><span class="t-zh">权限模式</span><span class="t-en">Permission modes</span></caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="t-zh">模式</span><span class="t-en">Mode</span></th>
+                <th scope="col"><span class="t-zh">不询问就允许做什么</span><span class="t-en">What runs without asking</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>strict</code><br><span class="t-zh">逐次确认</span><span class="t-en">Strict</span></td>
+                <td><span class="t-zh">每一次工具调用都要批准，包括只读。</span><span class="t-en">Every tool call needs approval, including reads.</span></td>
+              </tr>
+              <tr>
+                <td><code>balanced</code><br><span class="t-zh">平衡，默认</span><span class="t-en">Balanced, the default</span></td>
+                <td><span class="t-zh">只读直接跑。写入，或离开沙箱，要问。</span><span class="t-en">Reads run. Anything that writes or leaves the sandbox asks.</span></td>
+              </tr>
+              <tr>
+                <td><code>full</code><br><span class="t-zh">完全权限</span><span class="t-en">Full</span></td>
+                <td><span class="t-zh">什么都不问。审批门整个旁路。它不能写成一条规则，只有人可以打开。</span><span class="t-en">Nothing asks. The gate is bypassed. This is not expressible as a rule. Only a person can turn it on.</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <caption><span class="t-zh">风险分级，在平衡模式下</span><span class="t-en">Risk, under balanced mode</span></caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="t-zh">级别</span><span class="t-en">Level</span></th>
+                <th scope="col"><span class="t-zh">卡片上的原因</span><span class="t-en">What the card says</span></th>
+                <th scope="col"><span class="t-zh">默认</span><span class="t-en">Default</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>read</code></td>
+                <td><span class="t-zh">只读操作</span><span class="t-en">Read-only</span></td>
+                <td><span class="t-zh">放行</span><span class="t-en">Allow</span></td>
+              </tr>
+              <tr>
+                <td><code>write</code></td>
+                <td><span class="t-zh">会改动沙箱里的东西</span><span class="t-en">Would change something in the sandbox</span></td>
+                <td><span class="t-zh">询问</span><span class="t-en">Ask</span></td>
+              </tr>
+              <tr>
+                <td><code>external</code></td>
+                <td><span class="t-zh">会访问外部服务</span><span class="t-en">Would reach an external service</span></td>
+                <td><span class="t-zh">询问</span><span class="t-en">Ask</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <caption><span class="t-zh">出网模式</span><span class="t-en">Egress modes</span></caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="t-zh">模式</span><span class="t-en">Mode</span></th>
+                <th scope="col"><span class="t-zh">放行什么</span><span class="t-en">What gets out</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>allow_all</code></td>
+                <td><span class="t-zh">不限制。省略策略时就是这个。</span><span class="t-en">No limit. This is the policy when you omit one.</span></td>
+              </tr>
+              <tr>
+                <td><code>defaults_plus_allowlist</code></td>
+                <td><span class="t-zh">下面这些默认目的地，再加上你写的主机名。后缀按域名边界匹配，<code>example.com</code> 包含 <code>api.example.com</code>，不包含 <code>notexample.com</code>。</span><span class="t-en">The default destinations below, plus hostnames you add. Suffixes match on label boundaries: <code>example.com</code> allows <code>api.example.com</code> and never <code>notexample.com</code>.</span></td>
+              </tr>
+              <tr>
+                <td><code>allowlist_only</code></td>
+                <td><span class="t-zh">只有你写的那些。</span><span class="t-en">Only the hosts you list.</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">
+          <span class="t-zh">默认目的地，是一台电脑要能干活至少需要的那一组：</span>
+          <span class="t-en">The default destinations are the set a working computer needs at minimum:</span>
+        </p>
+        <ul class="chips">
+          <li>registry.npmjs.org</li>
+          <li>nodejs.org</li>
+          <li>pypi.org</li>
+          <li>files.pythonhosted.org</li>
+          <li>github.com</li>
+          <li>codeload.github.com</li>
+          <li>api.github.com</li>
+          <li>deb.debian.org</li>
+          <li>security.debian.org</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="kicker">06</p>
+          <h2>
+            <span class="t-zh">已知的界限</span>
+            <span class="t-en">Known limits</span>
+          </h2>
+          <p>
+            <span class="t-zh">这些写在 README 和实现里，不是路线图。</span>
+            <span class="t-en">These are in the README and in the implementation. They are not a roadmap.</span>
+          </p>
+        </header>
+        <div class="faq">
+          <details>
+            <summary><span class="t-zh">本机沙箱安全吗？</span><span class="t-en">Is the local sandbox safe?</span></summary>
+            <p>
+              <span class="t-zh"><code>local</code> 驱动没有任何隔离，而且要 <code>SANDBOX_ALLOW_LOCAL=1</code> 才肯启动。它只适合开发。隔离用 Docker。</span>
+              <span class="t-en">The <code>local</code> driver provides no isolation at all, and it will not start unless <code>SANDBOX_ALLOW_LOCAL=1</code>. It is for development. Docker is the isolated driver.</span>
+            </p>
+          </details>
+          <details>
+            <summary><span class="t-zh">能多用户一起部署吗？</span><span class="t-en">Can several people share one deployment?</span></summary>
+            <p>
+              <span class="t-zh">沙箱的生命周期是按所有者算的。多用户部署还需要这套模型之外的工作。</span>
+              <span class="t-en">Sandbox lifecycle is per-owner. A multi-user deployment needs work beyond this.</span>
+            </p>
+          </details>
+          <details>
+            <summary><span class="t-zh">能中途打断一条正在跑的命令吗？</span><span class="t-en">Can a running command be interrupted?</span></summary>
+            <p>
+              <span class="t-zh"><code>Sandbox.exec</code> 接受超时，但没有 <code>AbortSignal</code>。正在跑的命令不能被打断，只能等它结束或超时。回合预算的做法是放弃这次会话，而不是卡在这条命令上。</span>
+              <span class="t-en"><code>Sandbox.exec</code> takes a timeout but no <code>AbortSignal</code>, so a running command cannot be interrupted — only waited out or timed out. The turn budget works around this by abandoning the session rather than blocking on it.</span>
+            </p>
+          </details>
+          <details>
+            <summary><span class="t-zh">为什么没有 App Store？</span><span class="t-en">Why is there no App Store build?</span></summary>
+            <p>
+              <span class="t-zh">结构上就不可能。App Sandbox 不允许拉起 shell，也不允许连接 Docker socket。分发方式是签名的 DMG。</span>
+              <span class="t-en">It is structurally impossible. App Sandbox forbids spawning shells and talking to the Docker socket. A signed DMG is the path.</span>
+            </p>
+          </details>
+          <details>
+            <summary><span class="t-zh">白名单会管住 MCP 吗？</span><span class="t-en">Does the allowlist cover MCP?</span></summary>
+            <p>
+              <span class="t-zh">默认不管。stdio MCP 跑在宿主机上，沙箱网络策略盖不住它们自己的出站。远程 MCP 只有 <code>applyToMcp</code> 打开时才受同一份名单约束。挡住一个服务的网页，并不等于挡住它的 MCP，反过来也一样。</span>
+              <span class="t-en">Not by default. stdio MCP servers run on the host, so the sandbox network policy does not cover their own outbound traffic. Remote MCP is held to the same list only when <code>applyToMcp</code> is set. Blocking a service's website does not block its MCP server, and the reverse is also true.</span>
+            </p>
+          </details>
+          <details>
+            <summary><span class="t-zh">提示词能把 Bot 打开到完全权限吗？</span><span class="t-en">Can a prompt switch a bot to full?</span></summary>
+            <p>
+              <span class="t-zh">不能。规则只会更严，不会更松，所以写进提示词里的「规则」到不了完全权限。<code>full</code> 是另一条代码路径，只有人可以打开；打开之后，审批门整个旁路。</span>
+              <span class="t-en">No. Rules may only tighten, never loosen, so a prompt cannot reach full. <code>full</code> is a separate path that only a person can turn on, and it bypasses the approval gate entirely.</span>
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p>
+        <strong>Bots</strong><br>
+        <span class="t-zh">MIT 许可 · Copyright © 2026 hf.shi</span>
+        <span class="t-en">MIT License · Copyright © 2026 hf.shi</span>
+      </p>
+      <p>
+        <a href="https://github.com/proto1994/grok-bot" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/proto1994/grok-bot/blob/main/LICENSE" rel="license noopener noreferrer">MIT</a>
+        ·
+        <a href="https://cursor.com/docs/grok-bot" rel="noopener noreferrer">Cursor Grok Bot</a>
+      </p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
