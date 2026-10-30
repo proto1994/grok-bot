@@ -99,22 +99,13 @@ async function startServer() {
     SANDBOX_CONFIG: path.join(DATA, 'sandboxes.json'),
   };
 
-  if (!env.ADA_TOKEN) {
-    const p = envPath();
-    const choice = dialog.showMessageBoxSync({
-      type: 'warning',
-      message: '缺少模型凭证',
-      detail: `应用需要 ADA_TOKEN 才能连上模型网关。\n\n把它写进：\n${p}\n\n格式：ADA_TOKEN=ada_...`,
-      buttons: ['打开所在文件夹', '退出'],
-      defaultId: 0,
-    });
-    if (choice === 0) {
-      fs.writeFileSync(p, fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '# ADA_TOKEN=ada_...\n');
-      shell.showItemInFolder(p);
-    }
-    app.quit();
-    return null;
-  }
+  // No credential check here. Model providers are configured in the app and
+  // stored in sqlite; ADA_TOKEN and the rest of .env are only a first-run seed
+  // for a database that has no provider yet. This used to refuse to start
+  // without ADA_TOKEN, which left anyone who had set up DeepSeek in the UI
+  // unable to open the app at all. A server with no provider starts fine and
+  // says so — the models sheet is where that gets fixed, and the first run that
+  // needs a model fails with a message pointing at it.
 
   // The server only prints the token on the run that mints it, so take it from
   // the file when it is already there. Without this the approval notifications
