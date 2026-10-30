@@ -94,6 +94,14 @@ pnpm dmg                 # signed DMG (needs an Apple Developer ID)
 | `desktop/` | Electron wrapper |
 | `scripts/` | Tests (see below) |
 | `website/` | Product site, static. See `website/README.md` |
+| `docs/` | Architecture notes. See `docs/architecture.md` |
+
+## 架构
+
+想看整体结构，读 [docs/architecture.md](docs/architecture.md)：16 张 Mermaid 图，
+按仓库里的实现画的 —— 总览、一次对话回合、审批门怎么判、模型提供商怎么存
+key、沙箱与出网白名单、sqlite 里的实体关系，以及 `website/` 为什么不参与
+`pnpm build`。代码和 README 对不上的地方，文档里标了「待核实」。
 
 ## Tests
 
