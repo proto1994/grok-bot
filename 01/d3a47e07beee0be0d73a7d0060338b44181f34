@@ -1,0 +1,26 @@
+scripts/app-test.mjs
+  s_070db7ec799bad::t_74f7f74aa54923 97-106
+website/index.html
+  s_070db7ec799bad::t_d3772997b25482 401,404
+desktop/main.cjs
+  s_070db7ec799bad::t_c3036c1e647687 102-108
+docs/architecture.md
+  s_070db7ec799bad::t_e74aa621844148 967-977
+  s_070db7ec799bad::t_3a0d84fc775f5d 1050
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "01d3a47e07beee0be0d73a7d0060338b44181f34",
+  "prompts": {},
+  "sessions": {
+    "s_070db7ec799bad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e913ce3f-445d-42ea-803c-cd105f155c5c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "proto1994 <12874077+proto1994@users.noreply.github.com>"
+    }
+  }
+}
